@@ -1,0 +1,31 @@
+{
+  "name": "stosh",
+  "version": "0.1.0",
+  "description": "Middleware-based browser storage wrapper (stosh)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/num2k/stosh"
+  },
+  "keywords": [
+    "storage",
+    "localStorage",
+    "sessionStorage",
+    "middleware",
+    "typescript",
+    "stosh"
+  ],
+  "author": "num2k",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "ts-jest": "^29.3.2"
+  }
+}
