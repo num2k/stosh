@@ -7,3 +7,4 @@ jest.config.js
 .gitignore
 README.ko.md
 .github
+tsconfig.json
