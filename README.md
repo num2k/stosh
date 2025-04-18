@@ -210,7 +210,7 @@ storage.set("temp", "data");
 - `batchGet(keys: string[]): any[]`
 - `batchRemove(keys: string[])`
 
-See the full API documentation in [API.md](https://github.com/num2k/stosh/documents/API.md).
+See the full API documentation in [API.md](https://github.com/num2k/stosh/blob/main/documents/API.md).
 
 ## License
 

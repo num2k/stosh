@@ -210,7 +210,7 @@ storage.set("temp", "data");
 - `batchGet(keys: string[]): any[]`
 - `batchRemove(keys: string[])`
 
-전체 API 문서는 [API.ko.md](https://github.com/num2k/stosh/documents/API.ko.md)에서 확인할 수 있습니다.
+전체 API 문서는 [API.ko.md](https://github.com/num2k/stosh/blob/main/documents/API.ko.md)에서 확인할 수 있습니다.
 
 ## 라이선스
 
