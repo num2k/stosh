@@ -1,67 +1,83 @@
-# Stosh API Reference (English)
+# Stosh API Reference
 
 ---
 
-## Constructor
+## 1. StoshOptions & Storage Types/Priority
 
-```typescript
+- `type`: "local" | "session" | "cookie" (storage type, default: "local")
+- `priority`: Array<"local" | "session" | "cookie" | "memory"> (storage fallback priority order)
+- `namespace`: string (namespace prefix)
+- `serialize`/`deserialize`: custom serialization/deserialization functions
+
+### Storage Types
+
+- **local**: localStorage (persistent, per domain)
+- **session**: sessionStorage (per tab/session)
+- **cookie**: document.cookie (per domain, sent to server, ~4KB limit)
+- **memory**: in-memory fallback (temporary, lost on refresh)
+
+### Storage Fallback Priority
+
+- Default: tries ["local", "session", "cookie", "memory"] in order
+- You can specify the order with the `priority` option
+- In SSR (server-side) environments, always uses memory storage
+
+**Example:**
+
+```ts
+const storage = new Stosh({
+  priority: ["local", "session", "cookie", "memory"],
+  namespace: "fb",
+});
+```
+
+### Cookie/Memory/SSR Environment Notes
+
+- Cookie: browser only, ~4KB limit, sent to server, falls back to memory in SSR/Node.js
+- Memory: lost on refresh/tab close, always used in SSR/Node.js
+- SSR: if window is undefined, always uses memory storage
+
+---
+
+## 2. Constructor & API Signature
+
+```ts
 new Stosh(options?: {
-  type?: 'local' | 'session';      // Storage type (default: 'local')
-  namespace?: string;              // Namespace (prefix) for data isolation
-  serialize?: (data: any) => string;   // Custom serialization function
-  deserialize?: (raw: string) => any;  // Custom deserialization function
+  type?: "local" | "session" | "cookie";
+  priority?: Array<"local" | "session" | "cookie" | "memory">;
+  namespace?: string;
+  serialize?: (data: any) => string;
+  deserialize?: (raw: string) => any;
 })
 ```
 
-- `type`: Use localStorage if 'local', sessionStorage if 'session'
-- `namespace`: Data is fully isolated by namespace
-- `serialize`/`deserialize`: You can use formats other than JSON (encryption, compression, etc)
-
 ---
 
-## Main Methods
+## 3. Main Methods & Examples
 
 ### set(key, value, options?)
 
-- Stores the value for the given key
-- You can specify expiration in ms with options.expire
-- Example: `storage.set('user', {name: 'Alice'}, {expire: 60000})`
+- Store a value, optionally with options.expire (ms)
 
----
-
-## set(key, value, options?) Internal Behavior & Usage
-
-- Internally wraps value and expiration info in an object and serializes it
-- If expire is set, stores current time + expire(ms) in the `e` field
-- If middleware is registered, runs the set middleware chain before actual storage
-- Use cases: expiration, encryption, logging, data normalization, etc
-
----
+```ts
+storage.set("user", { name: "Alice" }, { expire: 60000 });
+```
 
 ### get<T>(key): T | null
 
-- Returns the value for the key (returns null if expired)
-- Type-safe with TypeScript generics
-- Example: `const user = storage.get<{name: string}>('user')`
+- Retrieve a value, returns null if expired
 
----
-
-## get<T>(key) Internal Behavior & Usage
-
-- Deserializes the stored value, checks expiration (`e` field) against current time
-- If expired, deletes and returns null; if valid, returns value (`v` field)
-- If get middleware is registered, passes through the middleware chain
-- Use cases: decryption, type conversion, access logging, etc
-
----
+```ts
+const user = storage.get<{ name: string }>("user");
+```
 
 ### remove(key)
 
-- Removes the value for the key
+- Remove a value
 
 ### clear()
 
-- Removes all values in the current namespace
+- Remove all values in the namespace
 
 ### has(key): boolean
 
@@ -69,209 +85,133 @@ new Stosh(options?: {
 
 ### getAll(): Record<string, any>
 
-- Returns all key-value pairs in the namespace as an object
+- Returns all key-value pairs in the namespace
 
 ---
 
-## Middleware & Events
+## 4. Key Properties: isMemoryFallback, isSSR
+
+- `isMemoryFallback`: An instance property indicating whether the storage has actually fallen back to in-memory storage (temporary storage).
+  - If true, it means local/session/cookie storage is unavailable and memory storage is being used.
+  - Example:
+    ```ts
+    const storage = new Stosh();
+    if (storage.isMemoryFallback) {
+      console.warn(
+        "Memory storage is being used. Data will be lost on refresh or tab close."
+      );
+    }
+    ```
+- `Stosh.isSSR`: A static property that returns true if the current environment is SSR (server-side).
+  - Returns true if window is undefined.
+  - Example:
+    ```ts
+    if (Stosh.isSSR) {
+      // Code that runs only in SSR (server-side) environments
+    }
+    ```
+
+---
+
+## 5. Middleware & Events
 
 ### use(method, middleware)
 
-- Add middleware (interceptor) to set/get/remove operations
-- Example:
-  ```ts
-  storage.use("set", (ctx, next) => {
-    ctx.value = encrypt(ctx.value);
-    next();
-  });
-  ```
-- Middleware signature:
-  ```ts
-  (ctx: { key: string; value?: any; options?: any; result?: any }, next: () => void) => void
-  ```
+- Add middleware to set/get/remove operations
 
----
-
-## use(method, middleware) Usage
-
-- You can register any number of middleware in a chain for set/get/remove
-- Each middleware receives ctx (context) and next(), and can modify ctx or run logic before/after next()
-- Use cases: input validation, auto-expiration, encryption/decryption, external API integration, etc
-
----
+```ts
+storage.use("set", (ctx, next) => {
+  ctx.value = encrypt(ctx.value);
+  next();
+});
+```
 
 ### onChange(callback)
 
-- Callback is triggered when a value in the same namespace is changed from another tab/window
-- Example:
-  ```ts
-  storage.onChange((key, value) => {
-    console.log(key, value);
-  });
-  ```
+- Callback when a value is changed from another tab/window
+
+```ts
+storage.onChange((key, value) => {
+  console.log(key, value);
+});
+```
 
 ---
 
-## onChange(cb) Internal Behavior & Usage
-
-- Uses the window storage event; callback is triggered when a value in the same namespace is changed from another tab/window
-- Callback receives (key, value) of the changed item
-- Use cases: real-time sync, collaboration apps, notifications, etc
-
----
-
-## Batch API
+## 6. Batch API
 
 ### batchSet(entries: {key, value, options?}[])
 
-- Stores multiple key-value pairs at once
-- Example:
-  ```ts
-  storage.batchSet([
-    { key: "a", value: 1 },
-    { key: "b", value: 2 },
-  ]);
-  ```
+- Store multiple values at once
 
 ### batchGet(keys: string[]): any[]
 
-- Returns an array of values for the given keys
-- Example:
-  ```ts
-  const values = storage.batchGet(["a", "b"]);
-  ```
+- Retrieve multiple values at once
 
 ### batchRemove(keys: string[])
 
-- Removes multiple keys at once
-- Example:
-  ```ts
-  storage.batchRemove(["a", "b"]);
-  ```
+- Remove multiple values at once
 
 ---
 
-## batchSet/batchGet/batchRemove Internal Behavior & Usage
+## 7. Advanced Features & Examples
 
-- Each method simply calls set/get/remove repeatedly
-- Middleware, expiration, serialization, etc. work the same as single methods
-- Use cases: bulk initialization, sync, batch deletion, etc
-
----
-
-## Type Safety
-
-- TypeScript generics ensure type-safe storage and retrieval
-- Example:
-  ```ts
-  const storage = new Stosh<{ name: string }>();
-  storage.set("user", { name: "Alice" });
-  const user = storage.get("user"); // type: { name: string } | null
-  ```
-
----
-
-## Namespace
-
-- Data is fully isolated by namespace specified in the constructor
-- Example:
-  ```ts
-  const userStorage = new Stosh({ namespace: "user" });
-  const cacheStorage = new Stosh({ namespace: "cache" });
-  userStorage.set("profile", { name: "Alice" });
-  cacheStorage.set("temp", 123);
-  ```
-
----
-
-## Custom Serialization/Deserialization
-
-- You can use formats other than JSON (encryption, compression, etc)
-- Example:
-  ```ts
-  const b64 = (s: string) => btoa(unescape(encodeURIComponent(s)));
-  const b64d = (s: string) => decodeURIComponent(escape(atob(s)));
-  const storage = new Stosh({
-    namespace: "enc",
-    serialize: (data) => b64(JSON.stringify(data)),
-    deserialize: (raw) => JSON.parse(b64d(raw)),
-  });
-  storage.set("foo", { a: 1 });
-  console.log(storage.get("foo")); // { a: 1 }
-  ```
-
----
-
-## Expiration (expire)
-
-- You can specify expiration in ms with options.expire in set
-- Expired values are automatically deleted and return null on get
-- Example:
-  ```ts
-  storage.set("temp", "temporary", { expire: 5000 });
-  setTimeout(() => {
-    console.log(storage.get("temp")); // null after 5 seconds
-  }, 6000);
-  ```
-
----
-
-## Memory Fallback (Automatic Replacement)
-
-stosh automatically falls back to in-memory storage if localStorage or sessionStorage is unavailable (e.g., private browsing, storage quota exceeded, browser restrictions, or non-browser environments). In this case, data will be lost when the browser is refreshed or the tab is closed.
-
-- You can check if fallback occurred via the instance's `isMemoryFallback` property.
-- The API remains the same, so you can use stosh safely without extra error handling.
+### Type Safety
 
 ```ts
-const storage = new Stosh();
-if (storage.isMemoryFallback) {
-  console.warn(
-    "Memory storage is being used. Data will be lost on refresh or tab close."
-  );
-}
+const storage = new Stosh<{ name: string }>();
+storage.set("user", { name: "Alice" });
+const user = storage.get("user"); // type: { name: string } | null
+```
+
+### Namespace Isolation
+
+```ts
+const userStorage = new Stosh({ namespace: "user" });
+const cacheStorage = new Stosh({ namespace: "cache" });
+userStorage.set("profile", { name: "Alice" });
+cacheStorage.set("temp", 123);
+```
+
+### Custom Serialization/Deserialization
+
+```ts
+const b64 = (s: string) => btoa(unescape(encodeURIComponent(s)));
+const b64d = (s: string) => decodeURIComponent(escape(atob(s)));
+const storage = new Stosh({
+  namespace: "enc",
+  serialize: (data) => b64(JSON.stringify(data)),
+  deserialize: (raw) => JSON.parse(b64d(raw)),
+});
+storage.set("foo", { a: 1 });
+console.log(storage.get("foo")); // { a: 1 }
+```
+
+### Expiration (expire)
+
+```ts
+storage.set("temp", "temporary", { expire: 5000 });
+setTimeout(() => {
+  console.log(storage.get("temp")); // null after 5 seconds
+}, 6000);
 ```
 
 ---
 
-## SSR (Server-Side Rendering) Support
+## 8. Environment Behavior & Notes
 
-stosh is safe to import and instantiate in SSR (Server-Side Rendering) environments such as Next.js and Nuxt.
-
-- In SSR environments (when `window` is not defined), stosh automatically uses in-memory storage and does not register browser-only event listeners.
-- You can check if the current environment is SSR using the static property `Stosh.isSSR`.
-- Only in browser environments will localStorage/sessionStorage actually persist data.
-
-```ts
-import { Stosh } from "stosh";
-
-if (Stosh.isSSR) {
-  // Code that runs only in server (SSR) environments
-}
-
-const storage = new Stosh();
-if (storage.isMemoryFallback) {
-  console.warn(
-    "Memory storage is being used. Data will be lost on refresh or tab close."
-  );
-}
-```
+- Only local/session/cookie storage is available in browsers
+- Always uses memory storage in SSR/Node.js
+- Cookie: ~4KB limit, sent to server
+- Memory: lost on refresh/tab close
+- Namespace collision can cause data overlap
+- Storage quota exceeded throws in set
+- Serialization/deserialization/middleware errors abort the operation
+- onChange does not trigger in the same tab (only across tabs/windows)
 
 ---
 
-## Usage Notes & Error Cases
-
-### Notes
-
-- **Works only in browser environments**: localStorage/sessionStorage are only available in browsers (will throw in SSR/Node.js)
-- **Namespace collision**: Creating multiple instances with the same namespace can cause data overlap
-- **Storage quota limits**: Browsers limit localStorage/sessionStorage size (typically ~5MB); set may throw if exceeded
-- **Serialization/Deserialization errors**: Storing circular references or non-JSON-serializable values will throw; custom serialize/deserialize may cause type or parsing errors
-- **Expiration (expire) option**: If system time changes, expiration may behave unexpectedly
-- **Middleware exceptions**: If a middleware throws, the entire set/get/remove operation will be aborted
-- **onChange event**: set/remove in the same tab does not trigger onChange (only works across tabs/windows)
-
-### Common Error Cases
+## 9. Common Error Cases
 
 - When localStorage is full: `QuotaExceededError: Failed to execute 'setItem' on 'Storage': The quota has been exceeded.`
 - Storing non-serializable objects: `TypeError: Converting circular structure to JSON`

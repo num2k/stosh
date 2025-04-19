@@ -210,3 +210,68 @@ describe("Stosh 메모리 폴백 및 SSR 지원", () => {
     global.window = originalWindow;
   });
 });
+
+describe("Stosh 쿠키 스토리지 지원", () => {
+  it("쿠키 스토리지 set/get/remove 동작", () => {
+    const storage = new Stosh({ type: "cookie", namespace: "cktest" });
+    storage.set("foo", "bar");
+    expect(storage.get("foo")).toBe("bar");
+    storage.remove("foo");
+    expect(storage.get("foo")).toBeNull();
+  });
+});
+
+describe("Stosh 저장소 우선순위(priority) 및 폴백/환경별 동작", () => {
+  it("priority 옵션에 따라 local → session → cookie → memory 순으로 폴백", () => {
+    // localStorage, sessionStorage, cookie 모두 임시로 비활성화(메모리 폴백 유도)
+    const originalLocal = window.localStorage;
+    const originalSession = window.sessionStorage;
+    // @ts-ignore
+    delete window.localStorage;
+    // @ts-ignore
+    window.localStorage = undefined;
+    // @ts-ignore
+    delete window.sessionStorage;
+    // @ts-ignore
+    window.sessionStorage = undefined;
+    const storage = new Stosh({
+      priority: ["local", "session", "cookie", "memory"],
+      namespace: "prio",
+    });
+    expect(storage.isMemoryFallback).toBe(true);
+    // 복원
+    window.localStorage = originalLocal;
+    window.sessionStorage = originalSession;
+  });
+
+  it("priority 옵션에 따라 sessionStorage 우선 사용", () => {
+    const storage = new Stosh({
+      priority: ["session", "local", "cookie", "memory"],
+      namespace: "prio2",
+    });
+    storage.set("foo", "bar");
+    expect(sessionStorage.getItem("prio2:foo")).toBeTruthy();
+  });
+
+  it("isMemoryFallback, isSSR 다양한 환경에서 동작", () => {
+    // SSR 환경 시뮬레이션
+    const originalWindow = global.window;
+    // @ts-ignore
+    delete global.window;
+    // @ts-ignore
+    global.window = undefined;
+    expect(Stosh.isSSR).toBe(true);
+    const storage = new Stosh({ namespace: "ssr2" });
+    expect(storage.isMemoryFallback).toBe(true);
+    // 복원
+    global.window = originalWindow;
+  });
+
+  it("쿠키 스토리지 폴백 동작 (브라우저 환경에서만)", () => {
+    const storage = new Stosh({ type: "cookie", namespace: "ckfb" });
+    storage.set("foo", "bar");
+    expect(storage.get("foo")).toBe("bar");
+    storage.remove("foo");
+    expect(storage.get("foo")).toBeNull();
+  });
+});
