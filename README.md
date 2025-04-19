@@ -2,15 +2,13 @@
 
 Middleware-based browser storage wrapper
 
-## Introduction
+stosh is an extensible TypeScript library that provides a unified interface for localStorage, sessionStorage, and cookie storage in the browser.
 
-stosh provides a unified, type-safe interface for localStorage and sessionStorage, with middleware support for extensible data processing (encryption, logging, validation, etc). It supports namespaces, expiration, batch operations, custom serialization, and storage event subscription—all in a lightweight TypeScript library.
-
-No external dependencies. Objects/arrays are automatically (de)serialized as JSON by default.
+---
 
 ## Features
 
-- Unified interface for localStorage/sessionStorage
+- Unified interface for localStorage, sessionStorage, and cookie
 - Namespace support for data isolation
 - Expiration (expire) option for set, with auto-removal of expired data
 - Middleware pattern: freely extend set/get/remove with custom logic
@@ -18,8 +16,10 @@ No external dependencies. Objects/arrays are automatically (de)serialized as JSO
 - Storage event subscription (onChange): react to changes from other tabs/windows
 - Custom serialization/deserialization (encryption, compression, etc)
 - Batch API: set/get/remove multiple keys at once
-- No dependencies, lightweight (<6KB)
-- Supports all modern browsers (Chrome, Edge, Firefox, Safari, etc)
+- No dependencies
+- Cross-browser support (Chrome, Edge, Firefox, Safari, etc)
+
+---
 
 ## Installation
 
@@ -27,37 +27,43 @@ No external dependencies. Objects/arrays are automatically (de)serialized as JSO
 npm install stosh
 ```
 
-## Basic Usage
+---
+
+## Quick Start
 
 ```ts
 import { Stosh } from "stosh";
 
 const storage = new Stosh({ type: "local", namespace: "myApp" });
 
-// Set, get, remove, clear
+// Store/retrieve/remove/clear values
 storage.set("user", { name: "Alice" }, { expire: 1000 * 60 * 10 });
 const user = storage.get<{ name: string }>("user");
 storage.remove("user");
 storage.clear();
 
-// Check if key exists
+// Check if a key exists
 if (storage.has("user")) {
   // ...
 }
 
-// Get all values in namespace
+// Get all values in the namespace
 const all = storage.getAll();
 ```
 
-## Expiration Example
+---
+
+## Expiration (expire) Example
 
 ```ts
-// Store a value that expires in 5 seconds
+// Store a value that expires after 5 seconds
 storage.set("temp", "temporary", { expire: 5000 });
 setTimeout(() => {
   console.log(storage.get("temp")); // null after 5 seconds
 }, 6000);
 ```
+
+---
 
 ## Middleware Example
 
@@ -75,7 +81,9 @@ storage.use("get", (ctx, next) => {
 });
 ```
 
-## Multiple Instances / Namespaces
+---
+
+## Multiple Instances / Namespace Isolation Example
 
 ```ts
 const userStorage = new Stosh({ namespace: "user" });
@@ -85,62 +93,23 @@ userStorage.set("profile", { name: "Alice" });
 cacheStorage.set("temp", 123);
 ```
 
-### Real-time Sync with onChange
+---
+
+## Storage Event Subscription Example
 
 ```ts
 const storage = new Stosh({ namespace: "sync" });
 storage.onChange((key, value) => {
-  // Reflect changes from other tabs in real time
-  console.log("Changed:", key, value);
+  // React to changes from other tabs/windows
+  console.log("Storage changed:", key, value);
 });
 ```
 
-## Automatic (De)serialization
-
-Objects and arrays are automatically serialized/deserialized as JSON. You can store and retrieve complex data structures without extra code.
-
-## Custom Serialization/Deserialization Example (e.g. Encryption)
-
-You can provide custom serialize/deserialize functions in the constructor for encryption, compression, or other formats.
-
-```ts
-// Example: base64 encode/decode
-const b64 = (s: string) => btoa(unescape(encodeURIComponent(s)));
-const b64d = (s: string) => decodeURIComponent(escape(atob(s)));
-const storage = new Stosh({
-  namespace: "enc",
-  serialize: (data) => b64(JSON.stringify(data)),
-  deserialize: (raw) => JSON.parse(b64d(raw)),
-});
-storage.set("foo", { a: 1 });
-console.log(storage.get("foo")); // { a: 1 }
-```
-
-## Batch API Example
-
-Batch methods let you set, get, or remove multiple keys at once—useful for bulk operations or initialization.
-
-```ts
-const storage = new Stosh({ namespace: "batch" });
-// Set multiple values
-storage.batchSet([
-  { key: "a", value: 1 },
-  { key: "b", value: 2 },
-  { key: "c", value: 3 },
-]);
-// Get multiple values
-console.log(storage.batchGet(["a", "b", "c"])); // [1, 2, 3]
-// Remove multiple values
-storage.batchRemove(["a", "b"]);
-```
-
-## Storage Type Selection
-
-Choose localStorage or sessionStorage via the type option in the constructor.
+---
 
 ## Memory Fallback (Automatic Replacement)
 
-stosh automatically falls back to in-memory storage if localStorage or sessionStorage is unavailable (e.g., private browsing, storage quota exceeded, browser restrictions, or non-browser environments). In this case, data will be lost when the browser is refreshed or the tab is closed.
+If localStorage or sessionStorage is unavailable (e.g., private mode, storage quota, unsupported browser), stosh automatically falls back to in-memory storage. In this case, data will be lost when the browser is refreshed or the tab is closed.
 
 - You can check if fallback occurred via the instance's `isMemoryFallback` property.
 - The API remains the same, so you can use stosh safely without extra error handling.
@@ -154,9 +123,35 @@ if (storage.isMemoryFallback) {
 }
 ```
 
+---
+
+## Storage Fallback Priority System
+
+stosh tries multiple storage backends in the order of priority and automatically selects the first available one. The default priority is `["local", "session", "cookie", "memory"]`, but you can specify your own order with the `priority` option in the constructor.
+
+- Example: If localStorage is unavailable, it tries sessionStorage, then cookie, and finally memory.
+- Use case: Ensures safe and consistent data storage across various browser environments, private mode, or restricted environments.
+
+**Usage Example:**
+
+```ts
+import { Stosh } from "stosh";
+
+// Try localStorage → sessionStorage → cookie → memory in order
+const storage = new Stosh({
+  priority: ["local", "session", "cookie", "memory"],
+  namespace: "fb",
+});
+
+storage.set("foo", "bar");
+console.log(storage.get("foo"));
+```
+
+---
+
 ## SSR (Server-Side Rendering) Support
 
-stosh is safe to import and instantiate in SSR (Server-Side Rendering) environments such as Next.js and Nuxt.
+stosh is safe to import and instantiate in SSR (Server-Side Rendering, e.g., Next.js, Nuxt) environments.
 
 - In SSR environments (when `window` is not defined), stosh automatically uses in-memory storage and does not register browser-only event listeners.
 - You can check if the current environment is SSR using the static property `Stosh.isSSR`.
@@ -166,7 +161,7 @@ stosh is safe to import and instantiate in SSR (Server-Side Rendering) environme
 import { Stosh } from "stosh";
 
 if (Stosh.isSSR) {
-  // Code that runs only in server (SSR) environments
+  // Code that runs only in SSR (server-side) environments
 }
 
 const storage = new Stosh();
@@ -177,15 +172,90 @@ if (storage.isMemoryFallback) {
 }
 ```
 
+---
+
+## Automatic Serialization/Deserialization of Objects/Arrays
+
+Objects, arrays, and other non-primitive values are automatically serialized/deserialized using JSON.stringify/parse, so you can safely store and retrieve data without extra handling.
+
+---
+
+## Custom Serialization/Deserialization Example (e.g., Encryption)
+
+You can specify serialize/deserialize functions in the constructor options. This allows you to use formats other than JSON (e.g., encryption, compression, etc.).
+
+```ts
+// Example: base64 serialization/deserialization
+const b64 = (s: string) => btoa(unescape(encodeURIComponent(s)));
+const b64d = (s: string) => decodeURIComponent(escape(atob(s)));
+const storage = new Stosh({
+  namespace: "enc",
+  serialize: (data) => b64(JSON.stringify(data)),
+  deserialize: (raw) => JSON.parse(b64d(raw)),
+});
+storage.set("foo", { a: 1 });
+console.log(storage.get("foo")); // { a: 1 }
+```
+
+---
+
+## Batch API Example
+
+batchSet, batchGet, and batchRemove methods allow you to store, retrieve, and remove multiple key-value pairs at once, which is useful for bulk data operations or initialization.
+
+```ts
+const storage = new Stosh({ namespace: "batch" });
+// Store multiple values at once
+storage.batchSet([
+  { key: "a", value: 1 },
+  { key: "b", value: 2 },
+  { key: "c", value: 3 },
+]);
+// Retrieve multiple values at once
+console.log(storage.batchGet(["a", "b", "c"])); // [1, 2, 3]
+// Remove multiple values at once
+storage.batchRemove(["a", "b"]);
+```
+
+---
+
+## Storage Type Selection
+
+You can select the desired storage type (localStorage, sessionStorage, or cookie) using the `type` option in the Stosh constructor.
+
+---
+
+## Cookie Storage Support
+
+By specifying `type: "cookie"` in the constructor options, you can use the same API (`set`, `get`, `remove`, `clear`, etc.) for cookies.
+
+- Use case: fallback for environments where localStorage/sessionStorage is unavailable, or for small data that needs to be shared with the server.
+- Note: Cookies have a size limit (~4KB per domain) and are sent to the server with every HTTP request.
+
+**Example:**
+
+```ts
+import { Stosh } from "stosh";
+
+const cookieStorage = new Stosh({ type: "cookie", namespace: "ck" });
+cookieStorage.set("foo", "bar");
+console.log(cookieStorage.get("foo")); // "bar"
+cookieStorage.remove("foo");
+```
+
+---
+
 ## Type Safety
 
-TypeScript generics ensure type-safe storage and retrieval.
+TypeScript generics ensure type safety for stored/retrieved data.
 
 ```ts
 const storage = new Stosh<{ name: string }>();
 storage.set("user", { name: "Alice" });
 const user = storage.get("user"); // type: { name: string } | null
 ```
+
+---
 
 ## Additional Usage Examples
 
@@ -222,17 +292,19 @@ local.set("foo", 1);
 session.set("bar", 2);
 ```
 
-### Expire Option with Middleware
+### Expiration with Middleware
 
 ```ts
 const storage = new Stosh({ namespace: "expire" });
 storage.use("set", (ctx, next) => {
-  // Automatically set 1 minute expiration for all values
+  // Automatically apply 1-minute expiration to all values
   ctx.options = { ...ctx.options, expire: 60000 };
   next();
 });
 storage.set("temp", "data");
 ```
+
+---
 
 ## API
 
@@ -249,7 +321,9 @@ storage.set("temp", "data");
 - `batchGet(keys: string[]): any[]`
 - `batchRemove(keys: string[])`
 
-See the full API documentation in [API.md](https://github.com/num2k/stosh/blob/main/documents/API.md).
+See the full API reference in [API.md](https://github.com/num2k/stosh/blob/main/documents/API.md).
+
+---
 
 ## License
 

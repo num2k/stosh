@@ -2,7 +2,12 @@
  * StoshOptions: Storage type, namespace, and custom serialization settings
  */
 export interface StoshOptions {
-  type?: "local" | "session";
+  /**
+   * Storage type priority order. Example: ["local", "session", "cookie", "memory"]
+   * If not set, uses [type] or default fallback order.
+   */
+  priority?: Array<"local" | "session" | "cookie" | "memory">;
+  type?: "local" | "session" | "cookie";
   namespace?: string;
   serialize?: (data: any) => string;
   deserialize?: (raw: string) => any;
@@ -28,6 +33,48 @@ class MemoryStorage implements Storage {
   }
   setItem(key: string, value: string) {
     this.store.set(key, value);
+  }
+}
+
+// Internal cookie storage implementation
+class CookieStorage implements Storage {
+  get length() {
+    return document.cookie ? document.cookie.split(";").length : 0;
+  }
+  clear() {
+    const cookies = document.cookie.split(";");
+    for (const cookie of cookies) {
+      const eqPos = cookie.indexOf("=");
+      const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+      if (name) this.removeItem(name);
+    }
+  }
+  getItem(key: string) {
+    const name = encodeURIComponent(key) + "=";
+    const ca = document.cookie.split(";");
+    for (let c of ca) {
+      c = c.trim();
+      if (c.indexOf(name) === 0)
+        return decodeURIComponent(c.substring(name.length));
+    }
+    return null;
+  }
+  key(index: number) {
+    const cookies = document.cookie.split(";");
+    if (index < 0 || index >= cookies.length) return null;
+    const eqPos = cookies[index].indexOf("=");
+    return eqPos > -1
+      ? decodeURIComponent(cookies[index].substr(0, eqPos).trim())
+      : null;
+  }
+  removeItem(key: string) {
+    document.cookie =
+      encodeURIComponent(key) +
+      "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+  }
+  setItem(key: string, value: string) {
+    document.cookie =
+      encodeURIComponent(key) + "=" + encodeURIComponent(value) + "; path=/";
   }
 }
 
@@ -76,6 +123,11 @@ export class Stosh<T = any> {
   constructor(options?: StoshOptions) {
     let storage: Storage | null = null;
     let fallback = false;
+    const priority =
+      options?.priority ||
+      (options?.type
+        ? [options.type]
+        : ["local", "session", "cookie", "memory"]);
     if (typeof window === "undefined") {
       // SSR environment: use memory storage, do not register event listeners
       fallback = true;
@@ -86,19 +138,36 @@ export class Stosh<T = any> {
       this.deserializeFn = options?.deserialize || JSON.parse;
       return;
     }
-    try {
-      storage =
-        options?.type === "session"
-          ? window.sessionStorage
-          : window.localStorage;
-      // Test write/read (Safari private mode, etc.)
-      const testKey = "__stosh_test__" + Math.random();
-      storage.setItem(testKey, "1");
-      storage.removeItem(testKey);
-    } catch {
+    // Try storages in priority order
+    for (const type of priority) {
+      try {
+        if (type === "local") {
+          storage = window.localStorage;
+        } else if (type === "session") {
+          storage = window.sessionStorage;
+        } else if (type === "cookie") {
+          storage = new CookieStorage();
+        } else if (type === "memory") {
+          storage = new MemoryStorage();
+        }
+        // Test write/read (except memory)
+        if (storage && type !== "memory") {
+          const testKey = "__stosh_test__" + Math.random();
+          storage.setItem(testKey, "1");
+          storage.removeItem(testKey);
+        }
+        fallback = type === "memory";
+        break;
+      } catch {
+        storage = null;
+        continue;
+      }
+    }
+    if (!storage) {
+      storage = new MemoryStorage();
       fallback = true;
     }
-    this.storage = fallback ? new MemoryStorage() : (storage as Storage);
+    this.storage = storage;
     this.isMemoryFallback = fallback;
     this.namespace = options?.namespace ? options.namespace + ":" : "";
     this.serializeFn = options?.serialize || JSON.stringify;
