@@ -8,6 +8,29 @@ export interface StoshOptions {
   deserialize?: (raw: string) => any;
 }
 
+// Internal memory storage fallback implementation
+class MemoryStorage implements Storage {
+  private store = new Map<string, string>();
+  get length() {
+    return this.store.size;
+  }
+  clear() {
+    this.store.clear();
+  }
+  getItem(key: string) {
+    return this.store.has(key) ? this.store.get(key)! : null;
+  }
+  key(index: number) {
+    return Array.from(this.store.keys())[index] ?? null;
+  }
+  removeItem(key: string) {
+    this.store.delete(key);
+  }
+  setItem(key: string, value: string) {
+    this.store.set(key, value);
+  }
+}
+
 /**
  * SetOptions: Options for set method (e.g., expiration)
  */
@@ -43,14 +66,44 @@ export class Stosh<T = any> {
     remove: Middleware<T>[];
   } = { get: [], set: [], remove: [] };
   private onChangeCb?: (key: string, value: T | null) => void;
+  /** Indicates if memory fallback is active */
+  readonly isMemoryFallback: boolean;
+  /** Indicates if running in SSR environment */
+  static get isSSR(): boolean {
+    return typeof window === "undefined";
+  }
 
   constructor(options?: StoshOptions) {
-    this.storage =
-      options?.type === "session" ? window.sessionStorage : window.localStorage;
+    let storage: Storage | null = null;
+    let fallback = false;
+    if (typeof window === "undefined") {
+      // SSR environment: use memory storage, do not register event listeners
+      fallback = true;
+      this.storage = new MemoryStorage();
+      this.isMemoryFallback = true;
+      this.namespace = options?.namespace ? options.namespace + ":" : "";
+      this.serializeFn = options?.serialize || JSON.stringify;
+      this.deserializeFn = options?.deserialize || JSON.parse;
+      return;
+    }
+    try {
+      storage =
+        options?.type === "session"
+          ? window.sessionStorage
+          : window.localStorage;
+      // Test write/read (Safari private mode, etc.)
+      const testKey = "__stosh_test__" + Math.random();
+      storage.setItem(testKey, "1");
+      storage.removeItem(testKey);
+    } catch {
+      fallback = true;
+    }
+    this.storage = fallback ? new MemoryStorage() : (storage as Storage);
+    this.isMemoryFallback = fallback;
     this.namespace = options?.namespace ? options.namespace + ":" : "";
     this.serializeFn = options?.serialize || JSON.stringify;
     this.deserializeFn = options?.deserialize || JSON.parse;
-    if (typeof window !== "undefined" && window.addEventListener) {
+    if (!fallback && typeof window !== "undefined" && window.addEventListener) {
       window.addEventListener("storage", (e) => {
         if (e.key && e.key.startsWith(this.namespace) && this.onChangeCb) {
           const key = e.key.replace(this.namespace, "");
@@ -68,7 +121,7 @@ export class Stosh<T = any> {
   set(key: string, value: T, options?: SetOptions): void {
     this.runMiddleware("set", { key, value, options }, (ctx) => {
       const data = {
-        v: ctx.value, // 미들웨어에서 가공된 값 사용
+        v: ctx.value, // Use value processed by middleware
         e: ctx.options?.expire ? Date.now() + ctx.options.expire : undefined,
       };
       this.storage.setItem(this.namespace + key, this.serialize(data));
