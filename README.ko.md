@@ -95,6 +95,45 @@ storage.onChange((key, value) => {
 });
 ```
 
+## 메모리 폴백(자동 대체) 기능
+
+stosh는 localStorage나 sessionStorage를 사용할 수 없는 환경(예: 프라이빗 모드, 저장소 제한, 브라우저 미지원 등)에서 자동으로 메모리 스토리지로 전환되어 동작합니다. 이 경우, 데이터는 브라우저를 새로고침하거나 탭을 닫으면 사라집니다.
+
+- 폴백이 발생했는지는 인스턴스의 `isMemoryFallback` 속성으로 확인할 수 있습니다.
+- API 사용법은 동일하며, 별도의 예외처리 없이 안전하게 사용할 수 있습니다.
+
+```ts
+const storage = new Stosh();
+if (storage.isMemoryFallback) {
+  console.warn(
+    "현재 환경에서는 메모리 스토리지를 사용합니다. 새로고침 시 데이터가 사라집니다."
+  );
+}
+```
+
+## SSR(서버사이드 렌더링) 환경 지원
+
+stosh는 SSR(서버사이드 렌더링, 예: Next.js, Nuxt 등) 환경에서도 안전하게 import 및 인스턴스 생성이 가능합니다.
+
+- SSR 환경(window가 없는 경우)에는 자동으로 메모리 스토리지를 사용하며, 브라우저 전용 이벤트 리스너는 등록하지 않습니다.
+- `Stosh.isSSR` 정적 속성으로 현재 환경이 SSR인지 코드에서 확인할 수 있습니다.
+- 브라우저 환경에서만 localStorage/sessionStorage가 실제로 동작합니다.
+
+```ts
+import { Stosh } from "stosh";
+
+if (Stosh.isSSR) {
+  // 서버 환경(SSR)에서만 실행되는 코드
+}
+
+const storage = new Stosh();
+if (storage.isMemoryFallback) {
+  console.warn(
+    "현재 환경에서는 메모리 스토리지를 사용합니다. 새로고침 시 데이터가 사라집니다."
+  );
+}
+```
+
 ## 객체/배열 자동 직렬화/역직렬화
 
 Stosh는 객체, 배열 등 비원시값을 저장할 때 자동으로 JSON.stringify/parse를 적용하므로 별도의 처리 없이 안전하게 데이터를 저장하고 불러올 수 있습니다.
