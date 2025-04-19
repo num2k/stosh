@@ -138,6 +138,45 @@ storage.batchRemove(["a", "b"]);
 
 Choose localStorage or sessionStorage via the type option in the constructor.
 
+## Memory Fallback (Automatic Replacement)
+
+stosh automatically falls back to in-memory storage if localStorage or sessionStorage is unavailable (e.g., private browsing, storage quota exceeded, browser restrictions, or non-browser environments). In this case, data will be lost when the browser is refreshed or the tab is closed.
+
+- You can check if fallback occurred via the instance's `isMemoryFallback` property.
+- The API remains the same, so you can use stosh safely without extra error handling.
+
+```ts
+const storage = new Stosh();
+if (storage.isMemoryFallback) {
+  console.warn(
+    "Memory storage is being used. Data will be lost on refresh or tab close."
+  );
+}
+```
+
+## SSR (Server-Side Rendering) Support
+
+stosh is safe to import and instantiate in SSR (Server-Side Rendering) environments such as Next.js and Nuxt.
+
+- In SSR environments (when `window` is not defined), stosh automatically uses in-memory storage and does not register browser-only event listeners.
+- You can check if the current environment is SSR using the static property `Stosh.isSSR`.
+- Only in browser environments will localStorage/sessionStorage actually persist data.
+
+```ts
+import { Stosh } from "stosh";
+
+if (Stosh.isSSR) {
+  // Code that runs only in server (SSR) environments
+}
+
+const storage = new Stosh();
+if (storage.isMemoryFallback) {
+  console.warn(
+    "Memory storage is being used. Data will be lost on refresh or tab close."
+  );
+}
+```
+
 ## Type Safety
 
 TypeScript generics ensure type-safe storage and retrieval.

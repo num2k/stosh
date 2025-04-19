@@ -181,3 +181,32 @@ describe("Stosh 확장 기능", () => {
     expect(storage.get("c")).toBe(3);
   });
 });
+
+describe("Stosh 메모리 폴백 및 SSR 지원", () => {
+  it("localStorage 사용 불가 시 메모리 폴백 동작", () => {
+    // window.localStorage를 임시로 undefined로 만듦
+    const originalLocalStorage = window.localStorage;
+    // @ts-ignore
+    delete window.localStorage;
+    // @ts-ignore
+    window.localStorage = undefined;
+    const storage = new Stosh({ namespace: "memfb" });
+    expect(storage.isMemoryFallback).toBe(true);
+    // 복원
+    window.localStorage = originalLocalStorage;
+  });
+
+  it("SSR 환경에서 isSSR, isMemoryFallback 동작", () => {
+    // window가 undefined인 환경을 시뮬레이션
+    const originalWindow = global.window;
+    // @ts-ignore
+    delete global.window;
+    // @ts-ignore
+    global.window = undefined;
+    expect(Stosh.isSSR).toBe(true);
+    const storage = new Stosh({ namespace: "ssr" });
+    expect(storage.isMemoryFallback).toBe(true);
+    // 복원
+    global.window = originalWindow;
+  });
+});
