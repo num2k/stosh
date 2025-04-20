@@ -1,6 +1,6 @@
 {
   "name": "stosh",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Middleware-based browser storage wrapper (stosh)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -16,6 +16,7 @@
     "test": "jest",
     "test:dts": "tsd",
     "test:e2e": "playwright test",
+    "test:serve": "serve .",
     "build:test-dts": "npm run build && copy test-dts\\index.test-d.ts dist\\index.test-d.ts",
     "build:test-e2e": "esbuild src/test-e2e-entry.ts --bundle --format=iife --outfile=e2e/build/index.js",
     "build": "rm -rf dist && npm run build:ts && npm run build:esm",

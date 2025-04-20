@@ -373,8 +373,13 @@ export class Stosh<T = any> {
     }
   }
 
-  onChange(cb: (key: string, value: T | null) => void | Promise<void>): void {
+  onChange(
+    cb: (key: string, value: T | null) => void | Promise<void>
+  ): () => void {
     this.onChangeCb = cb;
+    return () => {
+      this.onChangeCb = undefined;
+    };
   }
 
   // Internal: serialization/deserialization
