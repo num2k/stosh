@@ -2,49 +2,50 @@
 
 ---
 
-## 1. StoshOptions & Storage Types/Priority
+## 1. StoshOptions and Storage Types/Priority
 
-- `type`: "local" | "session" | "cookie" (storage type, default: "local")
-- `priority`: Array<"local" | "session" | "cookie" | "memory"> (storage fallback priority order)
+- `type`: "idb" | "local" | "session" | "cookie" | "memory" (storage type, default: "idb")
+- `priority`: Array<"idb" | "local" | "session" | "cookie" | "memory"> (storage fallback priority)
 - `namespace`: string (namespace prefix)
 - `serialize`/`deserialize`: custom serialization/deserialization functions
 
 ### Storage Types
 
-- **local**: localStorage (persistent, per domain)
+- **idb**: IndexedDB (async, large capacity, recommended)
+- **local**: localStorage (persistent per domain)
 - **session**: sessionStorage (per tab/session)
 - **cookie**: document.cookie (per domain, sent to server, ~4KB limit)
 - **memory**: in-memory fallback (temporary, lost on refresh)
 
 ### Storage Fallback Priority
 
-- Default: tries ["local", "session", "cookie", "memory"] in order
-- You can specify the order with the `priority` option
+- Default: `["idb", "local", "session", "cookie", "memory"]`
+- You can set the order with the `priority` option
 - In SSR (server-side) environments, always uses memory storage
 
 **Example:**
 
 ```ts
-const storage = new Stosh({
-  priority: ["local", "session", "cookie", "memory"],
+const storage = stosh({
+  priority: ["idb", "local", "session", "cookie", "memory"],
   namespace: "fb",
 });
 ```
 
 ### Cookie/Memory/SSR Environment Notes
 
-- Cookie: browser only, ~4KB limit, sent to server, falls back to memory in SSR/Node.js
+- Cookie: works only in browsers, 4KB limit, sent to server, auto memory fallback in SSR/Node.js
 - Memory: lost on refresh/tab close, always used in SSR/Node.js
-- SSR: if window is undefined, always uses memory storage
+- SSR: uses memory storage if window is undefined
 
 ---
 
-## 2. Constructor & API Signature
+## 2. Constructor and API Signature
 
 ```ts
-new Stosh(options?: {
-  type?: "local" | "session" | "cookie";
-  priority?: Array<"local" | "session" | "cookie" | "memory">;
+stosh(options?: {
+  type?: "idb" | "local" | "session" | "cookie" | "memory";
+  priority?: Array<"idb" | "local" | "session" | "cookie" | "memory">;
   namespace?: string;
   serialize?: (data: any) => string;
   deserialize?: (raw: string) => any;
@@ -53,122 +54,132 @@ new Stosh(options?: {
 
 ---
 
-## 3. Main Methods & Examples
+## 3. Main Methods and Examples
 
-### set(key, value, options?)
+### set / setSync
 
-- Store a value, optionally with options.expire (ms)
-
-```ts
-storage.set("user", { name: "Alice" }, { expire: 60000 });
-```
-
-### get<T>(key): T | null
-
-- Retrieve a value, returns null if expired
+- `set(key, value, options?)`: Promise<void> (async)
+- `setSync(key, value, options?)`: void (sync)
+- options.expire(ms) for expiration
 
 ```ts
-const user = storage.get<{ name: string }>("user");
+await storage.set("user", { name: "Alice" }, { expire: 60000 });
+storage.setSync("user", { name: "Alice" }, { expire: 60000 });
 ```
 
-### remove(key)
+### get / getSync
 
-- Remove a value
+- `get<T>(key)`: Promise<T | null> (async)
+- `getSync<T>(key)`: T | null (sync)
 
-### clear()
+```ts
+const user = await storage.get<{ name: string }>("user");
+const userSync = storage.getSync<{ name: string }>("user");
+```
 
-- Remove all values in the namespace
+### remove / removeSync
 
-### has(key): boolean
+- `remove(key)`: Promise<void> (async)
+- `removeSync(key)`: void (sync)
 
-- Returns whether the key exists
+### clear / clearSync
 
-### getAll(): Record<string, any>
+- `clear()`: Promise<void> (async)
+- `clearSync()`: void (sync)
 
-- Returns all key-value pairs in the namespace
+### has / hasSync
+
+- `has(key)`: Promise<boolean> (async)
+- `hasSync(key)`: boolean (sync)
+
+### getAll / getAllSync
+
+- `getAll()`: Promise<Record<string, any>> (async)
+- `getAllSync()`: Record<string, any> (sync)
 
 ---
 
-## 4. Key Properties: isMemoryFallback, isSSR
+## 4. Batch API
 
-- `isMemoryFallback`: An instance property indicating whether the storage has actually fallen back to in-memory storage (temporary storage).
-  - If true, it means local/session/cookie storage is unavailable and memory storage is being used.
-  - Example:
-    ```ts
-    const storage = new Stosh();
-    if (storage.isMemoryFallback) {
-      console.warn(
-        "Memory storage is being used. Data will be lost on refresh or tab close."
-      );
-    }
-    ```
-- `Stosh.isSSR`: A static property that returns true if the current environment is SSR (server-side).
-  - Returns true if window is undefined.
-  - Example:
-    ```ts
-    if (Stosh.isSSR) {
-      // Code that runs only in SSR (server-side) environments
-    }
-    ```
+### batchSet / batchSetSync
+
+- `batchSet(entries: {key, value, options?}[]): Promise<void>` (async)
+- `batchSetSync(entries: {key, value, options?}[]): void` (sync)
+
+### batchGet / batchGetSync
+
+- The result array is in the same order as the input keys array.
+- `batchGet(keys: string[]): Promise<any[]>` (async)
+- `batchGetSync(keys: string[]): any[]` (sync)
+
+### batchRemove / batchRemoveSync
+
+- `batchRemove(keys: string[]): Promise<void>` (async)
+- `batchRemoveSync(keys: string[]): void` (sync)
 
 ---
 
-## 5. Middleware & Events
+## 5. Properties: isMemoryFallback, isSSR
+
+- `isMemoryFallback`: whether the instance is actually using memory storage (true = fallback)
+- `stosh.isSSR`: static property, true if running in SSR (window is undefined)
+
+```ts
+const storage = stosh();
+if (storage.isMemoryFallback) {
+  console.warn(
+    "Memory storage is being used. Data will be lost on refresh or tab close."
+  );
+}
+if (stosh.isSSR) {
+  // SSR-only code
+}
+```
+
+---
+
+## 6. Middleware and Events
 
 ### use(method, middleware)
 
-- Add middleware to set/get/remove operations
+- Add middleware to set/get/remove
+- Supports both sync and async middleware
 
 ```ts
-storage.use("set", (ctx, next) => {
-  ctx.value = encrypt(ctx.value);
-  next();
+storage.use("set", async (ctx, next) => {
+  ctx.value = await encryptAsync(ctx.value);
+  await next();
 });
 ```
 
 ### onChange(callback)
 
-- Callback when a value is changed from another tab/window
+- Callback when value changes in another tab/window
+- Supports both sync and async callbacks
 
 ```ts
-storage.onChange((key, value) => {
-  console.log(key, value);
+storage.onChange(async (key, value) => {
+  await syncToServer(key, value);
 });
 ```
 
 ---
 
-## 6. Batch API
-
-### batchSet(entries: {key, value, options?}[])
-
-- Store multiple values at once
-
-### batchGet(keys: string[]): any[]
-
-- Retrieve multiple values at once
-
-### batchRemove(keys: string[])
-
-- Remove multiple values at once
-
----
-
-## 7. Advanced Features & Examples
+## 7. Advanced Features and Examples
 
 ### Type Safety
 
 ```ts
-const storage = new Stosh<{ name: string }>();
-storage.set("user", { name: "Alice" });
-const user = storage.get("user"); // type: { name: string } | null
+const storage = stosh<{ name: string }>();
+await storage.set("user", { name: "Alice" });
+const user = await storage.get("user"); // type: { name: string } | null
 ```
 
 ### Namespace Isolation
 
 ```ts
-const userStorage = new Stosh({ namespace: "user" });
-const cacheStorage = new Stosh({ namespace: "cache" });
+const userStorage = stosh({ namespace: "user" });
+const cacheStorage = stosh({ namespace: "cache" });
 userStorage.set("profile", { name: "Alice" });
 cacheStorage.set("temp", 123);
 ```
@@ -178,42 +189,42 @@ cacheStorage.set("temp", 123);
 ```ts
 const b64 = (s: string) => btoa(unescape(encodeURIComponent(s)));
 const b64d = (s: string) => decodeURIComponent(escape(atob(s)));
-const storage = new Stosh({
+const storage = stosh({
   namespace: "enc",
   serialize: (data) => b64(JSON.stringify(data)),
   deserialize: (raw) => JSON.parse(b64d(raw)),
 });
-storage.set("foo", { a: 1 });
-console.log(storage.get("foo")); // { a: 1 }
+await storage.set("foo", { a: 1 });
+console.log(await storage.get("foo")); // { a: 1 }
 ```
 
 ### Expiration (expire)
 
 ```ts
-storage.set("temp", "temporary", { expire: 5000 });
-setTimeout(() => {
-  console.log(storage.get("temp")); // null after 5 seconds
+await storage.set("temp", "temporary", { expire: 5000 });
+setTimeout(async () => {
+  console.log(await storage.get("temp")); // null after 5 seconds
 }, 6000);
 ```
 
 ---
 
-## 8. Environment Behavior & Notes
+## 8. Environment Notes
 
-- Only local/session/cookie storage is available in browsers
-- Always uses memory storage in SSR/Node.js
-- Cookie: ~4KB limit, sent to server
+- Only browsers support `local`/`session`/`cookie`/`idb` storage
+- SSR/Node.js always uses memory storage
+- Cookie: 4KB limit, sent to server
 - Memory: lost on refresh/tab close
 - Namespace collision can cause data overlap
-- Storage quota exceeded throws in set
-- Serialization/deserialization/middleware errors abort the operation
-- onChange does not trigger in the same tab (only across tabs/windows)
+- Storage quota exceeded throws error
+- Serialization/deserialization/middleware errors can stop operation
+- `onChange` does not fire in the same tab (only other tabs/windows)
 
 ---
 
 ## 9. Common Error Cases
 
-- When localStorage is full: `QuotaExceededError: Failed to execute 'setItem' on 'Storage': The quota has been exceeded.`
-- Storing non-serializable objects: `TypeError: Converting circular structure to JSON`
-- Custom serialization/deserialization errors: `SyntaxError: Unexpected token ...` (parsing failure, etc)
-- Accessing in non-browser environments: `ReferenceError: window is not defined`
+- localStorage full: `QuotaExceededError: Failed to execute 'setItem' on 'Storage': The quota has been exceeded.`
+- JSON serialization error: `TypeError: Converting circular structure to JSON`
+- Custom serialization/deserialization error: `SyntaxError: Unexpected token ...`
+- Accessing in non-browser: `ReferenceError: window is not defined`
