@@ -46,7 +46,7 @@ pnpm add stosh
 아래와 같이 `script` 태그를 추가하면, stosh를 전역 함수(`window.stosh`)로 바로 사용할 수 있습니다.
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/num2k/stosh@1.0.1/standalone/stosh.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/num2k/stosh@1.0.2/standalone/stosh.js"></script>
 <script>
   const storage = stosh({ namespace: "demo" });
   storage.setSync("foo", 123);

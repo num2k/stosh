@@ -46,7 +46,7 @@ pnpm add stosh
 Just add the following `script` tag, and stosh will be available as a global function (`window.stosh`):
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/num2k/stosh@1.0.1/standalone/stosh.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/num2k/stosh@1.0.2/standalone/stosh.js"></script>
 <script>
   const storage = stosh({ namespace: "demo" });
   storage.setSync("foo", 123);
