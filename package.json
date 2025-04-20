@@ -1,12 +1,24 @@
 {
   "name": "stosh",
-  "version": "0.1.6",
+  "version": "1.0.0",
   "description": "Middleware-based browser storage wrapper (stosh)",
   "main": "dist/index.js",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "exports": {
+    "import": "./dist/index.mjs",
+    "require": "./dist/index.js"
+  },
   "scripts": {
-    "build": "tsc",
-    "test": "jest"
+    "test": "jest",
+    "test:dts": "tsd",
+    "test:e2e": "playwright test",
+    "build:test-dts": "npm run build && copy test-dts\\index.test-d.ts dist\\index.test-d.ts",
+    "build:test-e2e": "esbuild src/test-e2e-entry.ts --bundle --format=iife --outfile=e2e/build/index.js",
+    "build": "rm -rf dist && npm run build:ts && npm run build:esm",
+    "build:ts": "tsc",
+    "build:esm": "esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs --minify",
+    "build:standalone": "rm -rf standalone && esbuild src/index.ts --bundle --format=iife --global-name=stosh --outfile=standalone/stosh.js --minify"
   },
   "repository": {
     "type": "git",
@@ -14,22 +26,28 @@
   },
   "keywords": [
     "storage",
+    "indexeddb",
     "localStorage",
     "sessionStorage",
     "middleware",
     "typescript",
     "javascript",
     "web storage",
-    "wrapper",
+    "browser storage",
+    "storage wrapper",
     "cookie",
     "stosh"
   ],
   "author": "num2k",
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.52.0",
     "@types/jest": "^29.5.14",
+    "esbuild": "^0.25.2",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
-    "ts-jest": "^29.3.2"
+    "playwright": "^1.52.0",
+    "ts-jest": "^29.3.2",
+    "tsd": "^0.32.0"
   }
 }
