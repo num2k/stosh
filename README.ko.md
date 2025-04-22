@@ -194,7 +194,7 @@ const storage2 = stosh({
 await storage2.set("foo", "bar"); // cookie에 최우선 저장 시도
 ```
 
-**`priority`dhk `type` 옵션 간의 상호작용**
+**`priority`와 `type` 옵션 간의 상호작용**
 
 - `priority`를 지정하면 `type`은 무시되고, `priority` 배열에 명시된 순서대로 시도합니다.
 - `priority`가 없고 `type`이 지정되면 해당 타입만 사용됩니다. (폴백은 사용되지 않습니다)
