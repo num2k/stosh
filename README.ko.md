@@ -13,7 +13,7 @@ stosh는 IndexedDB, localStorage, sessionStorage, cookie를 브라우저에서 �
 - set 시 만료(expire) 옵션 지원, 만료 데이터 자동 삭제
 - 미들웨어 패턴 지원: set/get/remove 동작에 자유롭게 기능 추가 가능
 - 타입 안전성(TypeScript 제네릭)
-- 스토리지 이벤트 구독(onChange) 지원: 다른 탭/윈도우에서 값 변경 시 콜백 실행
+- 스토리지 이벤트 구독(onChange) 지원: 스토리지 값 변경 시 콜백 실행
 - 커스텀 직렬화/역직렬화 지원(암호화, 압축 등 다양한 포맷 사용 가능)
 - 일괄 처리(Batch) API 지원: 여러 키/값을 한 번에 저장·조회·삭제
 - 외부 의존성 없음, 경량화 번들사이즈 4kB(gzip) 이하
@@ -46,7 +46,7 @@ pnpm add stosh
 아래와 같이 `script` 태그를 추가하면, stosh를 전역 함수(`window.stosh`)로 바로 사용할 수 있습니다.
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/num2k/stosh@1.0.2/standalone/stosh.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/num2k/stosh@latest/standalone/stosh.js"></script>
 <script>
   const storage = stosh({ namespace: "demo" });
   storage.setSync("foo", 123);
@@ -138,6 +138,9 @@ await cacheStorage.set("temp", 123);
 
 ## 스토리지 이벤트 구독 예시
 
+- 현재 인스턴스에서 `set`/`remove`/`clear` 등으로 값이 변경될 때 콜백이 즉시 실행됩니다.
+- 다른 탭/윈도우에서는 **localStorage 또는 sessionStorage** 값 변경시에만 콜백이 실행됩니다.
+
 ```ts
 storage.onChange(async (key, value) => {
   await syncToServer(key, value);
@@ -163,7 +166,8 @@ const storage = stosh({
 
 ## 저장소 폴백 우선순위(priority) 체계
 
-여러 저장소를 우선순위대로 시도하여, 사용 가능한 첫 번째 저장소를 자동으로 적용합니다. 기본 우선순위는 `["idb", "local", "session", "cookie", "memory"]`이며 동기 api일 경우, 우선순위는 `idb`를 제외하고 `local`부터 자동으로 적용 됩니다.
+여러 저장소를 우선순위대로 시도하여, 사용 가능한 첫 번째 저장소를 자동으로 적용합니다.
+기본 우선순위는 `["idb", "local", "session", "cookie", "memory"]`이며 동기 API(`*Sync`) 사용 시에는 IndexedDB(`idb`)가 비동기 전용이므로, 기본 우선순위에서 `idb`를 제외하고 `local`부터 적용됩니다.
 생성자 옵션의 `priority`로 직접 순서를 변경할 수 있습니다.
 
 - 예시: IndexedDB가 불가하면 localStorage, 그다음 sessionStorage, cookie, 마지막으로 memory 순으로 자동 폴백
@@ -190,10 +194,10 @@ const storage2 = stosh({
 await storage2.set("foo", "bar"); // cookie에 최우선 저장 시도
 ```
 
-**`type` 옵션과의 관계**
+**`priority`dhk `type` 옵션 간의 상호작용**
 
-- `priority`를 지정하면 `type`은 무시되고, `priority` 배열에 명시된 순서대로 저장소를 시도합니다.
-- `priority`가 없으면 `type`이 단일 저장소로 동작합니다.
+- `priority`를 지정하면 `type`은 무시되고, `priority` 배열에 명시된 순서대로 시도합니다.
+- `priority`가 없고 `type`이 지정되면 해당 타입만 사용됩니다. (폴백은 사용되지 않습니다)
 - 두 옵션 모두 없으면 기본 우선순위대로 자동 적용됩니다.
 
 ---

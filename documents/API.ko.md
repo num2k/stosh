@@ -154,7 +154,8 @@ storage.use("set", async (ctx, next) => {
 
 ### onChange(callback)
 
-- 다른 탭/윈도우에서 값 변경 시 콜백 실행
+- 현재 인스턴스에서 set/remove/clear 등으로 값이 변경될 때 콜백 실행 (모든 스토리지타입 해당)
+- 다른 탭/윈도우에서는 localStorage/sessionStorage 값이 변경될 때 콜백이 실행 (IndexedDB, Cookie 변경은 다른 탭으로 전달되지 않음)
 - 동기/비동기 콜백 모두 지원
 
 ```ts
@@ -213,12 +214,12 @@ setTimeout(async () => {
 
 - 브라우저 환경에서만 `idb`/`local`/`session`/`cookie` 스토리지 사용 가능
 - SSR/Node.js 환경에서는 항상 메모리 스토리지 사용
-- 쿠키는 4KB 제한, 서버로 자동 전송
+- 쿠키는 도메인당 약 4KB 용량 제한이 있으며, 동일 도메인 요청 시 서버로 자동 전송됨
 - 메모리 스토리지는 새로고침/탭 닫기 시 데이터 소실
-- 네임스페이스 중복 시 데이터 겹침 가능
-- 스토리지 용량 초과 시 `set`에서 예외 발생
-- 직렬화/역직렬화/미들웨어 오류 발생 시 전체 동작 중단 가능
-- `onChange`는 같은 탭 내에서는 동작하지 않음(다른 탭/윈도우에서만 동작)
+- 네임스페이스 미지정 혹은 중복 시 데이터 충돌(겹침) 가능
+- 스토리지 용량 초과 시 `set`에서 예외 발생 (예: localStorage의 `QuotaExceededError`)
+- 직렬화/역직렬화/미들웨어 오류 발생 시 해당 작업이 중단되고 예외가 발생할 수 있음
+- `onChange` 콜백은 다른 탭/윈도우에서의 변경 감지를 위해 브라우저의 storage 이벤트를 사용하므로, localStorage/sessionStorage 변경 시에만 다른 탭으로 전파됨 (IndexedDB, Cookie는 전파되지 않음)
 
 ---
 

@@ -1,30 +1,30 @@
 export class MemoryStorage implements Storage {
   private store = new Map<string, string>();
-  get length() {
+  get length(): number {
     return this.store.size;
   }
-  clear() {
+  clear(): void {
     this.store.clear();
   }
-  getItem(key: string) {
+  getItem(key: string): string | null {
     return this.store.has(key) ? this.store.get(key)! : null;
   }
-  key(index: number) {
+  key(index: number): string | null {
     return Array.from(this.store.keys())[index] ?? null;
   }
-  removeItem(key: string) {
+  removeItem(key: string): void {
     this.store.delete(key);
   }
-  setItem(key: string, value: string) {
+  setItem(key: string, value: string): void {
     this.store.set(key, value);
   }
 }
 
 export class CookieStorage implements Storage {
-  get length() {
+  get length(): number {
     return document.cookie ? document.cookie.split(";").length : 0;
   }
-  clear() {
+  clear(): void {
     const cookies = document.cookie.split(";");
     for (const cookie of cookies) {
       const eqPos = cookie.indexOf("=");
@@ -32,7 +32,7 @@ export class CookieStorage implements Storage {
       if (name) this.removeItem(name);
     }
   }
-  getItem(key: string) {
+  getItem(key: string): string | null {
     const name = encodeURIComponent(key) + "=";
     const ca = document.cookie.split(";");
     for (let c of ca) {
@@ -42,7 +42,7 @@ export class CookieStorage implements Storage {
     }
     return null;
   }
-  key(index: number) {
+  key(index: number): string | null {
     const cookies = document.cookie.split(";");
     if (index < 0 || index >= cookies.length) return null;
     const eqPos = cookies[index].indexOf("=");
@@ -50,12 +50,12 @@ export class CookieStorage implements Storage {
       ? decodeURIComponent(cookies[index].substr(0, eqPos).trim())
       : null;
   }
-  removeItem(key: string) {
+  removeItem(key: string): void {
     document.cookie =
       encodeURIComponent(key) +
       "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
   }
-  setItem(key: string, value: string) {
+  setItem(key: string, value: string): void {
     document.cookie =
       encodeURIComponent(key) + "=" + encodeURIComponent(value) + "; path=/";
   }
@@ -66,16 +66,16 @@ export class IndexedDBStorage {
   private storeName: string;
   private dbPromise: Promise<IDBDatabase>;
 
-  constructor(dbName = "stosh", storeName = "store") {
+  constructor(dbName = "stosh_idb", storeName = "stosh_default") {
     this.dbName = dbName;
     this.storeName = storeName;
     this.dbPromise = this.open();
   }
 
-  public getStoreName() {
+  public getStoreName(): string {
     return this.storeName;
   }
-  public getDbPromise() {
+  public getDbPromise(): Promise<IDBDatabase> {
     return this.dbPromise;
   }
 
@@ -86,7 +86,8 @@ export class IndexedDBStorage {
         req.result.createObjectStore(this.storeName);
       };
       req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      req.onerror = () =>
+        reject(new Error("IndexedDB open error: " + req.error));
     });
   }
 
@@ -97,7 +98,8 @@ export class IndexedDBStorage {
       const store = tx.objectStore(this.storeName);
       const req = store.get(key);
       req.onsuccess = () => resolve(req.result ?? null);
-      req.onerror = () => reject(req.error);
+      req.onerror = () =>
+        reject(new Error("IndexedDB getItem error: " + req.error));
     });
   }
 
@@ -108,7 +110,8 @@ export class IndexedDBStorage {
       const store = tx.objectStore(this.storeName);
       const req = store.put(value, key);
       req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      req.onerror = () =>
+        reject(new Error("IndexedDB setItem error: " + req.error));
     });
   }
 
@@ -119,7 +122,8 @@ export class IndexedDBStorage {
       const store = tx.objectStore(this.storeName);
       const req = store.delete(key);
       req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      req.onerror = () =>
+        reject(new Error("IndexedDB removeItem error: " + req.error));
     });
   }
 }

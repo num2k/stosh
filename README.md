@@ -13,7 +13,7 @@ stosh is a TypeScript library that provides a unified interface for IndexedDB, l
 - Expiration (expire) option for set, with auto-removal of expired data
 - Middleware pattern: freely extend set/get/remove with custom logic
 - Type safety (TypeScript generics)
-- Storage event subscription (onChange): callback on value change in other tabs/windows
+- Storage event subscription (onChange): Executes callback when storage value changes
 - Custom serialization/deserialization (encryption, compression, etc)
 - Batch API: set/get/remove multiple keys at once
 - No dependencies, lightweight bundle size under 4kB (gzipped)
@@ -46,7 +46,7 @@ pnpm add stosh
 Just add the following `script` tag, and stosh will be available as a global function (`window.stosh`):
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/num2k/stosh@1.0.2/standalone/stosh.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/num2k/stosh@latest/standalone/stosh.js"></script>
 <script>
   const storage = stosh({ namespace: "demo" });
   storage.setSync("foo", 123);
@@ -137,6 +137,9 @@ await cacheStorage.set("temp", 123);
 
 ## Storage Event Subscription Example
 
+- The callback is triggered immediately when values are changed via `set`, `remove`, or `clear` on the current instance.
+- In other tabs or windows, the callback is only triggered when **localStorage** or **sessionStorage** values are changed.
+
 ```ts
 storage.onChange(async (key, value) => {
   await syncToServer(key, value);
@@ -162,7 +165,10 @@ const storage = stosh({
 
 ## Storage Fallback Priority System
 
-Multiple storages are tried in order of priority, and the first available storage is automatically selected. The default priority is `["idb", "local", "session", "cookie", "memory"]`. For synchronous APIs, the priority is automatically applied from `local` (excluding `idb`). You can customize the order with the `priority` option.
+Multiple storages are tried in order of priority, and the first available storage is automatically selected.
+The default priority is `["idb", "local", "session", "cookie", "memory"]`.
+When using synchronous APIs (`*Sync`), IndexedDB (`idb`) is excluded because it's asynchronous-only, so the effective priority starts from `local`.
+You can customize the order with the `priority` option.
 
 - Example: If IndexedDB is unavailable, it automatically falls back to localStorage, then sessionStorage, cookie, and finally memory.
 - Use case: Ensures safe and consistent data storage across various browser environments, private mode, or restricted environments.
@@ -188,11 +194,11 @@ const storage2 = stosh({
 await storage2.set("foo", "bar"); // Tries to store in cookie first
 ```
 
-**Relation with `type` option**
+**Interaction between `priority` and `type` options:**
 
-- If `priority` is specified, `type` is ignored and storages are tried in the order of the `priority` array.
-- If `priority` is not set, `type` is used as a single storage.
-- If neither option is set, the default priority is applied.
+- If `priority` is specified, the `type` option is ignored. Storages are attempted in the order defined by the `priority` array.
+- If `priority` is not specified but `type` is, only the specified `type` will be used (no fallback).
+- If neither `priority` nor `type` is specified, the default priority (`["idb", "local", ...]`) is applied.
 
 ---
 

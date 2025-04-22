@@ -154,8 +154,9 @@ storage.use("set", async (ctx, next) => {
 
 ### onChange(callback)
 
-- Callback when value changes in another tab/window
-- Supports both sync and async callbacks
+- The callback is executed when a value is changed within the current instance using methods like `set`/`remove`/`clear` (applies to all storage types).
+- The callback is also executed when a `localStorage` or `sessionStorage` value is changed in other tabs/windows (Changes in IndexedDB and Cookie are not propagated to other tabs).
+- Supports both synchronous and asynchronous callbacks.
 
 ```ts
 storage.onChange(async (key, value) => {
@@ -209,16 +210,16 @@ setTimeout(async () => {
 
 ---
 
-## 8. Environment Notes
+## 8. Environment-Specific Behavior and Notes
 
-- Only browsers support `local`/`session`/`cookie`/`idb` storage
-- SSR/Node.js always uses memory storage
-- Cookie: 4KB limit, sent to server
-- Memory: lost on refresh/tab close
-- Namespace collision can cause data overlap
-- Storage quota exceeded throws error
-- Serialization/deserialization/middleware errors can stop operation
-- `onChange` does not fire in the same tab (only other tabs/windows)
+- Browser storage (`idb`, `local`, `session`, `cookie`) is only available in browser environments
+- Always uses memory storage in SSR/Node.js environments
+- Cookies have a ~4KB limit per domain and are automatically sent with requests to the same domain
+- Memory storage data is lost on page refresh or tab/window close
+- Not specifying or using duplicate namespaces can cause data collisions (overlap)
+- `set` throws an exception when storage quota is exceeded (e.g., `QuotaExceededError` for localStorage)
+- Serialization/deserialization or middleware errors can interrupt the operation and cause exceptions
+- The `onChange` callback uses the browser's `storage` event for cross-tab change detection, so only `localStorage`/`sessionStorage` changes are propagated to other tabs (IndexedDB, Cookie changes are not propagated)
 
 ---
 

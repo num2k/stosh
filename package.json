@@ -1,6 +1,6 @@
 {
   "name": "stosh",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Middleware-based browser storage wrapper (stosh)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

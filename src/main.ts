@@ -10,6 +10,7 @@ import {
   IndexedDBStorage,
 } from "./storage-drivers";
 import { runMiddlewareSync, runMiddleware } from "./middleware";
+import { MiddlewareMethod } from "./middleware";
 
 /**
  * Stosh: Middleware-based storage wrapper
@@ -19,11 +20,11 @@ export class Stosh<T = any> {
   private namespace: string;
   private serializeFn: (data: any) => string;
   private deserializeFn: (raw: string) => any;
-  private middlewares: {
-    get: Middleware<T>[];
-    set: Middleware<T>[];
-    remove: Middleware<T>[];
-  } = { get: [], set: [], remove: [] };
+  private middlewares: Map<MiddlewareMethod, Middleware<T>[]> = new Map([
+    ["get", []],
+    ["set", []],
+    ["remove", []],
+  ]);
   private onChangeCb?: (key: string, value: T | null) => void | Promise<void>;
   private idbStorage?: IndexedDBStorage;
   /** Indicates if memory fallback is active */
@@ -44,10 +45,7 @@ export class Stosh<T = any> {
     const isSync =
       options?.type === undefined || options?.type.endsWith("Sync");
     let priority =
-      options?.priority ||
-      (options?.type
-        ? [options.type]
-        : ["idb", "local", "session", "cookie", "memory"]);
+      options?.priority || (options?.type ? [options.type] : validTypes);
     // If synchronous API, exclude idb from priority
     if (isSync && priority.includes("idb")) {
       priority = priority.filter((t) => t !== "idb");
@@ -70,7 +68,12 @@ export class Stosh<T = any> {
     // Try storages in priority order
     for (const type of priority) {
       try {
-        if (type === "local") {
+        if (type === "idb") {
+          this.idbStorage = new IndexedDBStorage(
+            "stosh_idb",
+            options?.namespace || "stosh_default"
+          );
+        } else if (type === "local") {
           storage = window.localStorage;
         } else if (type === "session") {
           storage = window.sessionStorage;
@@ -78,11 +81,6 @@ export class Stosh<T = any> {
           storage = new CookieStorage();
         } else if (type === "memory") {
           storage = new MemoryStorage();
-        } else if (type === "idb") {
-          this.idbStorage = new IndexedDBStorage(
-            "stosh",
-            options?.namespace || "store"
-          );
         }
         if (storage && type !== "memory" && type !== "idb") {
           const testKey = "__stosh_test_key__" + Math.random();
@@ -116,42 +114,52 @@ export class Stosh<T = any> {
     }
   }
 
-  use(method: "get" | "set" | "remove", mw: Middleware<T>): void {
-    this.middlewares[method].push(mw);
+  use(method: MiddlewareMethod, mw: Middleware<T>): void {
+    if (!this.middlewares.has(method)) {
+      throw new Error(`Invalid middleware method: ${method}`);
+    }
+    const arr = this.middlewares.get(method);
+    if (arr) arr.push(mw);
   }
 
   // Asynchronous middleware chain application
-  private async runMiddleware(
-    method: "get" | "set" | "remove",
+  private async runMiddlewareChain(
+    method: MiddlewareMethod,
     ctx: MiddlewareContext<T>,
     last: (ctx: MiddlewareContext<T>) => Promise<void> | void
   ) {
-    await runMiddleware(this.middlewares[method], ctx, last);
+    await runMiddleware(this.middlewares.get(method) ?? [], ctx, last);
   }
 
   // Synchronous middleware chain application
-  private runMiddlewareSync(
-    method: "get" | "set" | "remove",
+  private runMiddlewareChainSync(
+    method: MiddlewareMethod,
     ctx: MiddlewareContext<T>,
     last: (ctx: MiddlewareContext<T>) => void
   ) {
-    runMiddlewareSync(this.middlewares[method], ctx, last);
+    runMiddlewareSync(this.middlewares.get(method) ?? [], ctx, last);
   }
 
   // Asynchronous API middleware chain application
   async set(key: string, value: T, options?: SetOptions): Promise<void> {
     if (this.idbStorage) {
-      await this.runMiddleware("set", { key, value, options }, async (ctx) => {
-        const data = {
-          v: ctx.value,
-          e: ctx.options?.expire ? Date.now() + ctx.options.expire : undefined,
-        };
-        await this.idbStorage!.setItem(
-          this.namespace + key,
-          this.serialize(data)
-        );
-        this.triggerChange(key, ctx.value === undefined ? null : ctx.value);
-      });
+      await this.runMiddlewareChain(
+        "set",
+        { key, value, options },
+        async (ctx) => {
+          const data = {
+            v: ctx.value,
+            e: ctx.options?.expire
+              ? Date.now() + ctx.options.expire
+              : undefined,
+          };
+          await this.idbStorage!.setItem(
+            this.namespace + key,
+            this.serialize(data)
+          );
+          this.triggerChange(key, ctx.value === undefined ? null : ctx.value);
+        }
+      );
       return;
     }
     this.setSync(key, value, options);
@@ -161,7 +169,7 @@ export class Stosh<T = any> {
     if (this.idbStorage) {
       let ctxResult: U | null = null;
       const ctx: MiddlewareContext<T> = { key };
-      await this.runMiddleware("get", ctx, async (ctx) => {
+      await this.runMiddlewareChain("get", ctx, async (ctx) => {
         const raw = await this.idbStorage!.getItem(this.namespace + key);
         if (!raw) {
           ctxResult = null;
@@ -188,7 +196,7 @@ export class Stosh<T = any> {
 
   async remove(key: string): Promise<void> {
     if (this.idbStorage) {
-      await this.runMiddleware("remove", { key }, async (ctx) => {
+      await this.runMiddlewareChain("remove", { key }, async (ctx) => {
         await this.idbStorage!.removeItem(this.namespace + key);
         this.triggerChange(key, null);
       });
@@ -198,7 +206,7 @@ export class Stosh<T = any> {
   }
 
   setSync(key: string, value: T, options?: SetOptions): void {
-    this.runMiddlewareSync("set", { key, value, options }, (ctx) => {
+    this.runMiddlewareChainSync("set", { key, value, options }, (ctx) => {
       const data = {
         v: ctx.value,
         e: ctx.options?.expire ? Date.now() + ctx.options.expire : undefined,
@@ -211,7 +219,7 @@ export class Stosh<T = any> {
   getSync<U = T>(key: string): U | null {
     let ctxResult: U | null = null;
     const ctx: MiddlewareContext<T> = { key };
-    this.runMiddlewareSync("get", ctx, (ctx) => {
+    this.runMiddlewareChainSync("get", ctx, (ctx) => {
       const raw = this.storage.getItem(this.namespace + key);
       if (!raw) {
         ctxResult = null;
@@ -235,10 +243,27 @@ export class Stosh<T = any> {
   }
 
   removeSync(key: string): void {
-    this.runMiddlewareSync("remove", { key }, (ctx) => {
+    this.runMiddlewareChainSync("remove", { key }, (ctx) => {
       this.storage.removeItem(this.namespace + key);
       this.triggerChange(key, null);
     });
+  }
+
+  // Returns an array of all keys that start with the namespace (removes duplicate Storage iteration).
+  private getNamespaceKeys(): string[] {
+    const keys: string[] = [];
+    for (let i = 0; i < this.storage.length; ++i) {
+      const k = this.storage.key(i);
+      if (k && k.startsWith(this.namespace)) keys.push(k);
+    }
+    return keys;
+  }
+
+  // Removes the namespace prefix from a key (internal utility).
+  private stripNamespace(key: string): string {
+    return key.startsWith(this.namespace)
+      ? key.slice(this.namespace.length)
+      : key;
   }
 
   // Asynchronous clear
@@ -259,12 +284,10 @@ export class Stosh<T = any> {
 
   // Synchronous clear
   clearSync(): void {
-    const keys = Object.keys(this.storage).filter((k) =>
-      k.startsWith(this.namespace)
-    );
+    const keys = this.getNamespaceKeys();
     for (const k of keys) {
       this.storage.removeItem(k);
-      this.triggerChange(k.replace(this.namespace, ""), null);
+      this.triggerChange(this.stripNamespace(k), null);
     }
   }
 
@@ -306,12 +329,11 @@ export class Stosh<T = any> {
   // Synchronous getAll
   getAllSync(): Record<string, T> {
     const result: Record<string, T> = {};
-    for (const k in this.storage) {
-      if (k.startsWith(this.namespace)) {
-        const key = k.replace(this.namespace, "");
-        const v = this.getSync(key);
-        if (v !== null) result[key] = v;
-      }
+    const keys = this.getNamespaceKeys();
+    for (const k of keys) {
+      const key = this.stripNamespace(k);
+      const v = this.getSync(key);
+      if (v !== null) result[key] = v;
     }
     return result;
   }
