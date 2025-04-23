@@ -79,11 +79,13 @@ const userSync = storage.getSync<{ name: string }>("user");
 
 ### remove / removeSync
 
+- 지정된 키-값 쌍을 스토리지에서 제거합니다.
 - `remove(key)`: Promise<void> (비동기)
 - `removeSync(key)`: void (동기)
 
 ### clear / clearSync
 
+- 현재 네임스페이스 내의 모든 키-값 쌍을 스토리지에서 제거합니다.
 - `clear()`: Promise<void> (비동기)
 - `clearSync()`: void (동기)
 
@@ -155,6 +157,7 @@ storage.use("set", async (ctx, next) => {
 ### onChange(callback)
 
 - 현재 인스턴스에서 set/remove/clear 등으로 값이 변경될 때 콜백 실행 (모든 스토리지타입 해당)
+- **`clear`/`clearSync` 관련 참고**: 이 메서드들은 내부적으로 삭제되는 각 키에 대해 개별적인 `remove` 이벤트를 발생시킵니다. 따라서 `clear` 또는 `clearSync` 호출 시, 단일 'clear' 이벤트가 아니라 각 키마다 한 번씩, 즉 여러 번 `onChange` 콜백이 실행될 수 있습니다.
 - 다른 탭/윈도우에서는 localStorage/sessionStorage 값이 변경될 때 콜백이 실행 (IndexedDB, Cookie 변경은 다른 탭으로 전달되지 않음)
 - 동기/비동기 콜백 모두 지원
 

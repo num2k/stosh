@@ -66,9 +66,17 @@ export class IndexedDBStorage {
   private storeName: string;
   private dbPromise: Promise<IDBDatabase>;
 
-  constructor(dbName = "stosh_idb", storeName = "stosh_default") {
-    this.dbName = dbName;
-    this.storeName = storeName;
+  constructor(namespace: string) {
+    if (
+      typeof indexedDB === "undefined" ||
+      typeof indexedDB.open !== "function"
+    ) {
+      throw new Error(
+        "IndexedDB is not supported or 'open' method is missing in this environment."
+      );
+    }
+    this.dbName = `stoshDB_${namespace}`;
+    this.storeName = "stosh_store";
     this.dbPromise = this.open();
   }
 
@@ -81,13 +89,45 @@ export class IndexedDBStorage {
 
   private open(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(this.dbName, 1);
-      req.onupgradeneeded = () => {
-        req.result.createObjectStore(this.storeName);
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () =>
-        reject(new Error("IndexedDB open error: " + req.error));
+      try {
+        // Double-check right before the call, just to be safe
+        if (
+          typeof indexedDB === "undefined" ||
+          typeof indexedDB.open !== "function"
+        ) {
+          return reject(
+            new Error(
+              "IndexedDB became unavailable or invalid before open call."
+            )
+          );
+        }
+
+        // Attempt to open the database
+        const request = indexedDB.open(this.dbName, 1); // Line that might throw in jsdom
+
+        request.onupgradeneeded = (event) => {
+          const db = (event.target as IDBOpenDBRequest).result;
+          if (!db.objectStoreNames.contains(this.storeName)) {
+            db.createObjectStore(this.storeName);
+          }
+        };
+
+        request.onsuccess = (event) => {
+          resolve((event.target as IDBOpenDBRequest).result);
+        };
+
+        request.onerror = (event) => {
+          console.error(
+            `[stosh] IndexedDB open request error:`,
+            (event.target as IDBOpenDBRequest).error
+          );
+          reject((event.target as IDBOpenDBRequest).error);
+        };
+      } catch (e) {
+        // Catch synchronous errors specifically from the indexedDB.open() call itself
+        console.error(`[stosh] Critical error calling indexedDB.open:`, e);
+        reject(e); // Reject the promise if the open call itself fails
+      }
     });
   }
 
@@ -124,6 +164,132 @@ export class IndexedDBStorage {
       req.onsuccess = () => resolve();
       req.onerror = () =>
         reject(new Error("IndexedDB removeItem error: " + req.error));
+    });
+  }
+
+  async clear(): Promise<void> {
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.storeName, "readwrite");
+      const store = tx.objectStore(this.storeName);
+      const req = store.clear();
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("Transaction aborted"));
+    });
+  }
+
+  async getAllKeys(): Promise<string[]> {
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.storeName, "readonly");
+      const store = tx.objectStore(this.storeName);
+      const req = store.getAllKeys();
+      req.onsuccess = () => resolve(req.result as string[]);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async batchSet(
+    entries: Array<{ key: string; value: string }>
+  ): Promise<void> {
+    if (!entries.length) return;
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.storeName, "readwrite");
+      const store = tx.objectStore(this.storeName);
+      let remaining = entries.length;
+
+      entries.forEach(({ key, value }) => {
+        const req = store.put(value, key);
+        req.onsuccess = () => {
+          remaining--;
+          if (remaining === 0) {
+          }
+        };
+        req.onerror = () => {
+          if (!tx.error) {
+            reject(req.error);
+            tx.abort();
+          }
+        };
+      });
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("Transaction aborted"));
+    });
+  }
+
+  async batchGet(keys: string[]): Promise<(string | null)[]> {
+    if (!keys.length) return [];
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.storeName, "readonly");
+      const store = tx.objectStore(this.storeName);
+      const results: (string | null)[] = new Array(keys.length).fill(null);
+      const keyMap = new Map<string, number[]>();
+
+      keys.forEach((key, index) => {
+        if (!keyMap.has(key)) keyMap.set(key, []);
+        keyMap.get(key)!.push(index);
+      });
+
+      let remaining = keyMap.size;
+      if (remaining === 0) {
+        resolve(results);
+        return;
+      }
+
+      keyMap.forEach((indices, key) => {
+        const req = store.get(key);
+        req.onsuccess = () => {
+          indices.forEach((index) => (results[index] = req.result ?? null));
+          remaining--;
+          if (remaining === 0) {
+          }
+        };
+        req.onerror = () => {
+          if (!tx.error) {
+            reject(req.error);
+          }
+        };
+      });
+
+      tx.oncomplete = () => resolve(results);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("Transaction aborted"));
+    });
+  }
+
+  async batchRemove(keys: string[]): Promise<void> {
+    if (!keys.length) return;
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.storeName, "readwrite");
+      const store = tx.objectStore(this.storeName);
+      let remaining = keys.length;
+
+      keys.forEach((key) => {
+        const req = store.delete(key);
+        req.onsuccess = () => {
+          remaining--;
+          if (remaining === 0) {
+          }
+        };
+        req.onerror = () => {
+          if (!tx.error) {
+            reject(req.error);
+            tx.abort();
+          }
+        };
+      });
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("Transaction aborted"));
     });
   }
 }

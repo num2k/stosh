@@ -139,6 +139,7 @@ await cacheStorage.set("temp", 123);
 ## 스토리지 이벤트 구독 예시
 
 - 현재 인스턴스에서 `set`/`remove`/`clear` 등으로 값이 변경될 때 콜백이 즉시 실행됩니다.
+- **`clear`/`clearSync` 관련 참고**: 이 메서드들은 내부적으로 삭제되는 각 키에 대해 개별적인 `remove` 이벤트를 발생시킵니다. 따라서 `clear` 또는 `clearSync` 호출 시, 단일 'clear' 이벤트가 아니라 각 키마다 한 번씩, 즉 여러 번 `onChange` 콜백이 실행될 수 있습니다.
 - 다른 탭/윈도우에서는 **localStorage 또는 sessionStorage** 값 변경시에만 콜백이 실행됩니다.
 
 ```ts

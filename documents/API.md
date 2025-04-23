@@ -79,11 +79,13 @@ const userSync = storage.getSync<{ name: string }>("user");
 
 ### remove / removeSync
 
+- Removes the specified key-value pair from the storage.
 - `remove(key)`: Promise<void> (async)
 - `removeSync(key)`: void (sync)
 
 ### clear / clearSync
 
+- Removes all key-value pairs within the current namespace from the storage.
 - `clear()`: Promise<void> (async)
 - `clearSync()`: void (sync)
 
@@ -155,6 +157,7 @@ storage.use("set", async (ctx, next) => {
 ### onChange(callback)
 
 - The callback is executed when a value is changed within the current instance using methods like `set`/`remove`/`clear` (applies to all storage types).
+- **Note on `clear`/`clearSync`**: These methods internally trigger individual `remove` events for each key being deleted. Therefore, the `onChange` callback might be executed multiple times (once per key) when `clear` or `clearSync` is called, rather than a single 'clear' event.
 - The callback is also executed when a `localStorage` or `sessionStorage` value is changed in other tabs/windows (Changes in IndexedDB and Cookie are not propagated to other tabs).
 - Supports both synchronous and asynchronous callbacks.
 

@@ -1,6 +1,8 @@
+import { StorageType } from "./constants";
+
 export interface StoshOptions {
-  priority?: Array<"idb" | "local" | "session" | "cookie" | "memory">;
-  type?: "local" | "session" | "cookie" | "idb";
+  priority?: StorageType[];
+  type?: StorageType;
   namespace?: string;
   serialize?: (data: any) => string;
   deserialize?: (raw: string) => any;

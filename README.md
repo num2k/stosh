@@ -138,6 +138,7 @@ await cacheStorage.set("temp", 123);
 ## Storage Event Subscription Example
 
 - The callback is triggered immediately when values are changed via `set`, `remove`, or `clear` on the current instance.
+- **Note on `clear`/`clearSync`**: These methods internally trigger individual `remove` events for each key being deleted. Therefore, the `onChange` callback might be executed multiple times (once per key) when `clear` or `clearSync` is called, rather than a single 'clear' event.
 - In other tabs or windows, the callback is only triggered when **localStorage** or **sessionStorage** values are changed.
 
 ```ts

@@ -1,6 +1,5 @@
 import { Middleware, MiddlewareContext } from "./types";
-
-export type MiddlewareMethod = "get" | "set" | "remove";
+import { MiddlewareMethod } from "./constants"; // Import from constants
 
 export function runMiddlewareSync<T = any>(
   mws: Middleware<T>[],

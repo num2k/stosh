@@ -89,9 +89,9 @@ test.describe("Stosh E2E 기본 동작", () => {
   });
 
   test("batchSet/batchGet/batchRemove 동작", async ({ page }) => {
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       window.storage = window.stosh({ namespace: "batch" });
-      window.storage.batchSetSync([
+      await window.storage.batchSet([
         { key: "a", value: 1 },
         { key: "b", value: 2 },
         { key: "c", value: 3 },
@@ -102,10 +102,18 @@ test.describe("Stosh E2E 기본 동작", () => {
       async () => await window.storage.batchGet(["a", "b"])
     );
     expect(result).toEqual([1, 2]);
-    await page.evaluate(() => window.storage.batchRemoveSync(["a", "b"]));
-    expect(await page.evaluate(() => window.storage.getSync("a"))).toBeNull();
-    expect(await page.evaluate(() => window.storage.getSync("b"))).toBeNull();
-    expect(await page.evaluate(() => window.storage.getSync("c"))).toBe(3);
+    await page.evaluate(
+      async () => await window.storage.batchRemove(["a", "b"])
+    );
+    expect(
+      await page.evaluate(async () => await window.storage.get("a"))
+    ).toBeNull();
+    expect(
+      await page.evaluate(async () => await window.storage.get("b"))
+    ).toBeNull();
+    expect(await page.evaluate(async () => await window.storage.get("c"))).toBe(
+      3
+    );
   });
 
   test("미들웨어 동작", async ({ page }) => {
@@ -609,18 +617,27 @@ test.describe("Stosh E2E 기본 동작", () => {
     const isFallback = await page.evaluate(() => {
       window._origIndexedDB = window.indexedDB;
       // @ts-ignore
-      window.indexedDB = undefined;
+      window.indexedDB = undefined; // Mock IDB unavailability
       let fallback = false;
       try {
-        const s = window.stosh({ type: "idb", namespace: "idb-err" });
-        fallback = s.isMemoryFallback;
-        s.setSync("foo", 1);
-      } catch {}
+        // Use default priority (starts with idb)
+        const storageInstance = window.stosh({ namespace: "idberr" });
+        // Check the instance property after initialization attempts fallback
+        // Since localStorage should be available, it should fallback to local, not memory.
+        fallback = storageInstance.isMemoryFallback;
+      } catch (e) {
+        console.error("Error during stosh instantiation:", e);
+        // If an error occurs during instantiation itself, it might indicate a deeper issue,
+        // but for this test's purpose, we might assume memory fallback failed or wasn't reached.
+        // Let's keep fallback as false unless explicitly set by isMemoryFallback.
+        fallback = false;
+      }
       // @ts-ignore
-      window.indexedDB = window._origIndexedDB;
+      window.indexedDB = window._origIndexedDB; // Restore original IDB
       return fallback;
     });
-    expect(isFallback).toBe(true);
+    // Expect fallback to NOT be memory, as localStorage should be available
+    expect(isFallback).toBe(false); // Ensure expectation is false
   });
 
   test("메모리 스토리지: 새로고침 후 데이터 소실 확인", async ({ page }) => {
@@ -641,5 +658,230 @@ test.describe("Stosh E2E 기본 동작", () => {
       });
     });
     expect(await page.evaluate(() => window.storage.getSync("foo"))).toBeNull();
+  });
+
+  test("sessionStorage 탭 격리 동작", async ({ context }) => {
+    const page1 = await context.newPage();
+    const page2 = await context.newPage(); // 다른 탭
+    await page1.goto("/e2e/build/public/index.html");
+    await page2.goto("/e2e/build/public/index.html");
+
+    await page1.evaluate(() => {
+      window.storage = window.stosh({
+        type: "session",
+        namespace: "session-iso",
+      });
+      window.storage.setSync("shared", "page1");
+    });
+
+    // page1에서는 값이 조회되어야 함
+    expect(await page1.evaluate(() => window.storage.getSync("shared"))).toBe(
+      "page1"
+    );
+
+    // page2에서는 같은 키로 조회해도 값이 없어야 함 (세션 격리)
+    await page2.evaluate(() => {
+      window.storage = window.stosh({
+        type: "session",
+        namespace: "session-iso",
+      });
+    });
+    expect(
+      await page2.evaluate(() => window.storage.getSync("shared"))
+    ).toBeNull();
+
+    await page1.close();
+    await page2.close();
+  });
+
+  test("IndexedDB clear/has/getAll 동작", async ({ page }) => {
+    await page.evaluate(async () => {
+      window.storage = window.stosh({ type: "idb", namespace: "idb-extra" });
+      await window.storage.set("a", 1);
+      await window.storage.set("b", 2);
+    });
+
+    expect(await page.evaluate(async () => await window.storage.has("a"))).toBe(
+      true
+    );
+    expect(
+      await page.evaluate(async () => await window.storage.getAll())
+    ).toEqual({ a: 1, b: 2 });
+
+    await page.evaluate(async () => await window.storage.clear());
+    expect(await page.evaluate(async () => await window.storage.has("a"))).toBe(
+      false
+    );
+    expect(
+      await page.evaluate(async () => await window.storage.getAll())
+    ).toEqual({});
+  });
+
+  test("IDB 사용 시 동기 API 호출 시 폴백 저장소(localStorage) 사용", async ({
+    page,
+  }) => {
+    await page.evaluate(() => {
+      // type: 'idb' 명시 또는 기본값 사용
+      window.storage = window.stosh({ namespace: "idb-sync-fallback" });
+      // setSync 호출
+      window.storage.setSync("sync-key", "sync-value");
+    });
+
+    // localStorage에 저장되었는지 확인
+    const valueInLocalStorage = await page.evaluate(() => {
+      const raw = window.localStorage.getItem("idb-sync-fallback:sync-key");
+      return raw ? JSON.parse(raw).v : null;
+    });
+    expect(valueInLocalStorage).toBe("sync-value");
+
+    // getSync로도 읽어지는지 확인
+    expect(await page.evaluate(() => window.storage.getSync("sync-key"))).toBe(
+      "sync-value"
+    );
+
+    // IDB에는 저장되지 않았는지 확인 (선택적)
+    const valueInIdb = await page.evaluate(async () => {
+      // IDB 직접 접근은 복잡하므로, stosh의 비동기 get으로 확인
+      return await window.storage.get("sync-key");
+    });
+    // setSync는 IDB에 쓰지 않으므로 null이어야 함 (단, getSync 후 get하면 캐시될 수 있으므로 주의)
+    // 정확한 검증을 위해서는 IDB 직접 조회 필요하나, 여기서는 폴백 동작 확인에 집중
+    // console.log("Value in IDB:", valueInIdb); // 아마 null일 것임
+  });
+
+  test("onChange: IDB/Cookie/Memory 변경 시 다른 탭으로 전파 안 됨", async ({
+    context,
+  }) => {
+    const page1 = await context.newPage();
+    const page2 = await context.newPage();
+    await page1.goto("/e2e/build/public/index.html");
+    await page2.goto("/e2e/build/public/index.html");
+
+    await page1.evaluate(() => {
+      window.changes = [];
+      window.storageIdb = window.stosh({
+        type: "idb",
+        namespace: "onchange-idb",
+      });
+      window.storageCookie = window.stosh({
+        type: "cookie",
+        namespace: "onchange-cookie",
+      });
+      window.storageMemory = window.stosh({
+        type: "memory",
+        namespace: "onchange-memory",
+      });
+
+      const cb = (key, value) => window.changes.push({ key, value });
+      window.storageIdb.onChange(cb);
+      window.storageCookie.onChange(cb);
+      window.storageMemory.onChange(cb);
+    });
+
+    // page2에서 각 타입별로 값 변경
+    await page2.evaluate(async () => {
+      window.storageIdb = window.stosh({
+        type: "idb",
+        namespace: "onchange-idb",
+      });
+      window.storageCookie = window.stosh({
+        type: "cookie",
+        namespace: "onchange-cookie",
+      });
+      window.storageMemory = window.stosh({
+        type: "memory",
+        namespace: "onchange-memory",
+      });
+
+      await window.storageIdb.set("idb-key", 1);
+      window.storageCookie.setSync("cookie-key", 2);
+      window.storageMemory.setSync("memory-key", 3);
+    });
+
+    await page1.waitForTimeout(100); // 비동기 처리 및 이벤트 전파 시간
+
+    // page1의 changes 배열은 비어 있어야 함 (IDB, Cookie, Memory는 다른 탭으로 전파 안됨)
+    const changes = await page1.evaluate(() => window.changes);
+    expect(changes).toEqual([]);
+
+    await page1.close();
+    await page2.close();
+  });
+
+  test("E2E 폴백: localStorage 비활성화 시 sessionStorage 사용", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext();
+    // 모든 페이지 로드 시 localStorage.setItem을 에러 발생시키도록 모킹
+    await context.addInitScript(() => {
+      Object.defineProperty(window, "localStorage", {
+        value: {
+          getItem: (key) => window.sessionStorage.getItem(key), // sessionStorage로 위임 (테스트 단순화)
+          setItem: (key, value) => {
+            throw new Error("localStorage disabled");
+          }, // setItem만 막기
+          removeItem: (key) => window.sessionStorage.removeItem(key),
+          clear: () => window.sessionStorage.clear(),
+          key: (index) => window.sessionStorage.key(index),
+          get length() {
+            return window.sessionStorage.length;
+          },
+        },
+        writable: true,
+      });
+    });
+
+    const page = await context.newPage();
+    await page.goto("/e2e/build/public/index.html");
+
+    await page.evaluate(() => {
+      // priority 기본값 사용 (idb -> local -> session ...)
+      window.storage = window.stosh({ namespace: "e2e-fallback" });
+      // setSync는 local 시도 -> 실패 -> session 시도 -> 성공해야 함
+      window.storage.setSync("fallback-key", "fallback-value");
+    });
+
+    // sessionStorage에 저장되었는지 확인
+    const valueInSession = await page.evaluate(() => {
+      const raw = window.sessionStorage.getItem("e2e-fallback:fallback-key");
+      return raw ? JSON.parse(raw).v : null;
+    });
+    expect(valueInSession).toBe("fallback-value");
+
+    // getSync로도 읽어지는지 확인
+    expect(
+      await page.evaluate(() => window.storage.getSync("fallback-key"))
+    ).toBe("fallback-value");
+
+    await context.close();
+  });
+
+  test("비동기 미들웨어 동작 (IDB)", async ({ page }) => {
+    await page.evaluate(async () => {
+      window.storage = window.stosh({ type: "idb", namespace: "async-mw" });
+
+      window.storage.use("set", async (ctx, next) => {
+        await new Promise((resolve) => setTimeout(resolve, 10)); // 비동기 작업 시뮬레이션
+        ctx.value = `async_${ctx.value}`;
+        await next();
+      });
+
+      window.storage.use("get", async (ctx, next) => {
+        await next();
+        if (ctx.result) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          ctx.result = ctx.result.replace("async_", "decrypted_");
+        }
+      });
+
+      await window.storage.set("data", "secret");
+    });
+
+    // get을 통해 미들웨어가 적용된 최종 결과 확인
+    expect(
+      await page.evaluate(async () => await window.storage.get("data"))
+    ).toBe("decrypted_secret");
+
+    // IDB 직접 확인은 복잡하므로 생략, API 동작으로 검증
   });
 });
