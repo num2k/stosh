@@ -405,12 +405,12 @@ await storage.set("temp", "data");
 - `clearSync(): void`
 - `hasSync(key): boolean`
 - `getAllSync(): Record<string, any>`
-- `batchSet(entries: { key: string; value: any }[], options?: SetOptions): Promise<void>`
+- `batchSet(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions): Promise<void>`
   - Applies `SetOptions` (like `expire`, cookie options) to all entries being set.
 - `batchGet(keys: string[]): Promise<(any | null)[]>`
 - `batchRemove(keys: string[], options?: RemoveOptions): Promise<void>`
   - Applies `RemoveOptions` (cookie options) to all keys being removed.
-- `batchSetSync(entries: { key: string; value: any }[], options?: SetOptions): void`
+- `batchSetSync(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions): void`
 - `batchGetSync(keys: string[]): (any | null)[]`
 - `batchRemoveSync(keys: string[], options?: RemoveOptions): void`
 - `use(method: 'get' | 'set' | 'remove', middleware: Middleware)`
