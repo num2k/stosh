@@ -208,7 +208,9 @@ await storage2.set("foo", "bar"); // cookie에 최우선 저장 시도
 생성자 옵션에서 `type: "cookie"`를 지정하면 동일한 API로 쿠키를 사용할 수 있습니다.
 
 - 활용 예시: IndexedDB를/localStorage/sessionStorage 사용할 수 없는 환경에서의 폴백, 서버와 공유해야 하는 소규모 데이터 저장 등
-- 참고: 쿠키는 도메인당 약 4KB로 용량이 작고, 모든 HTTP 요청에 자동으로 서버로 전송됩니다.
+- 참고:
+  - 쿠키는 도메인당 약 4KB로 용량이 작고, 모든 HTTP 요청에 자동으로 서버로 전송됩니다.
+  - 쿠키 전용 옵션 `path`, `domain`, `secure`, `sameSite`은 표준이지만 브라우저/플랫폼/HTTP/HTTPS 환경에 따라 세부 동작(쿠키 저장, 삭제, 전송, 접근 등)이 다를 수 있습니다.
 
 **예시:**
 
@@ -217,6 +219,26 @@ const cookieStorage = stosh({ type: "cookie", namespace: "ck" });
 await cookieStorage.set("foo", "bar");
 console.log(await cookieStorage.get("foo")); // "bar"
 await cookieStorage.remove("foo");
+
+// 쿠키 옵션 사용
+const advancedCookieStorage = stosh({
+  type: "cookie",
+  namespace: "advancedCk",
+  path: "/app", // 이 인스턴스에서 생성되는 모든 쿠키의 기본 경로
+  secure: true, // 기본 secure 플래그
+});
+
+// 기본 옵션으로 설정
+advancedCookieStorage.setSync("user", "Alice");
+
+// 특정 옵션으로 설정 (기본 경로 덮어쓰기, 만료 시간 추가)
+advancedCookieStorage.setSync("session", "xyz", {
+  path: "/", // 기본 경로 덮어쓰기
+  expire: 1000 * 60 * 30, // 30분 만료
+});
+
+// 특정 경로로 삭제
+advancedCookieStorage.removeSync("user", { path: "/app" });
 ```
 
 ---
@@ -280,6 +302,10 @@ console.log(await storage.get("foo")); // { a: 1 }
 
 ## 일괄 처리(Batch) API 예제
 
+`batchSet`, `batchSetSync`, `batchRemove`, `batchRemoveSync` 메서드는 두 번째 인자로 공통 옵션을 받을 수 있습니다.
+`batchSet`, `batchSetSync` 메서드는 각 객체별로 개별 옵션(`options` 필드)을 지정할 수도 있습니다.
+실제 동작 시, 각 객체의 개별 옵션과 공통 옵션이 병합되어 적용됩니다. (객체별 옵션이 우선, 공통 옵션은 기본값 역할)
+
 ```ts
 const storage = stosh({ namespace: "batch" });
 // 여러 값 한 번에 저장
@@ -288,10 +314,21 @@ await storage.batchSet([
   { key: "b", value: 2 },
   { key: "c", value: 3 },
 ]);
+
 // 여러 값 한 번에 조회
 console.log(await storage.batchGet(["a", "b", "c"])); // [1, 2, 3]
+
 // 여러 값 한 번에 삭제
 await storage.batchRemove(["a", "b"]);
+
+// "a"는 expire, path, secure, "b"는 path, secure만 적용됨
+await storage.batchSet(
+  [
+    { key: "a", value: 1, options: { expire: 1000 } },
+    { key: "b", value: 2 },
+  ],
+  { path: "/app", secure: true }
+);
 ```
 
 ---
@@ -350,20 +387,32 @@ await storage.set("temp", "data");
 
 ## API
 
-- `stosh(options?: { type?: 'idb' | 'local' | 'session' | 'cookie'; namespace?: string })`
-- `set(key, value, options?: { expire?: number }): Promise<void>`
+- `stosh(options?: StoshOptions)`
+  - `StoshOptions`: `type`, `priority`, `namespace`, `serialize`, `deserialize`, and _`Cookie Options`_ (`path`, `domain`, `secure`, `sameSite`)
+- `set(key, value, options?: SetOptions): Promise<void>`
+  - `SetOptions`: `expire` and _`Cookie Options`_
 - `get<T>(key): Promise<T | null>`
-- `remove(key): Promise<void>`
+- `remove(key, options?: RemoveOptions): Promise<void>`
+  - `RemoveOptions`: _`Cookie Options`_
 - `clear(): Promise<void>`
 - `has(key): Promise<boolean>`
 - `getAll(): Promise<Record<string, any>>`
-- `setSync/getSync/removeSync/clearSync/hasSync/getAllSync`
-- `batchSet(entries: { key: string; value: any }[]): Promise<void>`
-- `batchGet(keys: string[]): Promise<any[]>`
-- `batchRemove(keys: string[]): Promise<void>`
-- `batchSetSync/batchGetSync/batchRemoveSync`
-- `use(method, middleware)`
-- `onChange(cb)`
+- `setSync(key, value, options?: SetOptions): void`
+- `getSync<T>(key): T | null`
+- `removeSync(key, options?: RemoveOptions): void`
+- `clearSync(): void`
+- `hasSync(key): boolean`
+- `getAllSync(): Record<string, any>`
+- `batchSet(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions): Promise<void>`
+  - Applies `SetOptions` (like `expire`, cookie options) to all entries being set.
+- `batchGet(keys: string[]): Promise<(any | null)[]>`
+- `batchRemove(keys: string[], options?: RemoveOptions): Promise<void>`
+  - Applies `RemoveOptions` (cookie options) to all keys being removed.
+- `batchSetSync(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions): void`
+- `batchGetSync(keys: string[]): (any | null)[]`
+- `batchRemoveSync(keys: string[], options?: RemoveOptions): void`
+- `use(method: 'get' | 'set' | 'remove', middleware: Middleware)`
+- `onChange(cb: (key: string | null, value: any | null) => void)`
 
 전체 API 문서는 [API.ko.md](https://github.com/num2k/stosh/blob/main/documents/API.ko.md)에서 확인할 수 있습니다.
 

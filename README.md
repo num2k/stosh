@@ -208,15 +208,38 @@ await storage2.set("foo", "bar"); // Tries to store in cookie first
 By specifying `type: "cookie"` in the function options, you can use the same API for cookies.
 
 - Use case: fallback for environments where IndexedDB/localStorage/sessionStorage is unavailable, or for small data that needs to be shared with the server.
-- Note: Cookies have a size limit (~4KB per domain) and are sent to the server with every HTTP request.
+- Note:
+  - Cookies have a size limit (~4KB per domain) and are sent to the server with every HTTP request.
+  - The cookie-specific options `path`, `domain`, `secure`, and `sameSite` are standardized, but their detailed behavior (such as cookie storage, deletion, transmission, and access) may vary depending on the browser, platform, and whether the environment is HTTP or HTTPS.
 
 **Example:**
 
 ```ts
+// Basic cookie usage
 const cookieStorage = stosh({ type: "cookie", namespace: "ck" });
 await cookieStorage.set("foo", "bar");
 console.log(await cookieStorage.get("foo")); // "bar"
 await cookieStorage.remove("foo");
+
+// Using cookie options
+const advancedCookieStorage = stosh({
+  type: "cookie",
+  namespace: "advancedCk",
+  path: "/app", // Default path for all cookies from this instance
+  secure: true, // Default secure flag
+});
+
+// Set with default options
+advancedCookieStorage.setSync("user", "Alice");
+
+// Set with specific options (overrides default path, adds expiration)
+advancedCookieStorage.setSync("session", "xyz", {
+  path: "/", // Override default path
+  expire: 1000 * 60 * 30, // 30 minutes expiration
+});
+
+// Remove with specific path
+advancedCookieStorage.removeSync("user", { path: "/app" });
 ```
 
 ---
@@ -280,18 +303,34 @@ console.log(await storage.get("foo")); // { a: 1 }
 
 ## Batch API Example
 
+The methods `batchSet`, `batchSetSync`, `batchRemove`, and `batchRemoveSync` accept a second argument for common options.
+The methods `batchSet`, `batchSetSync` can also specify individual options for each entry using the options field in each object.
+At runtime, each entry’s individual options are merged with the common options (entry-specific options take precedence, while common options serve as defaults).
+
 ```ts
 const storage = stosh({ namespace: "batch" });
+
 // Store multiple values at once
 await storage.batchSet([
   { key: "a", value: 1 },
   { key: "b", value: 2 },
   { key: "c", value: 3 },
 ]);
+
 // Retrieve multiple values at once
 console.log(await storage.batchGet(["a", "b", "c"])); // [1, 2, 3]
+
 // Remove multiple values at once
 await storage.batchRemove(["a", "b"]);
+
+// "a" will have expire, path, and secure applied, while "b" will have only path and secure applied.
+await storage.batchSet(
+  [
+    { key: "a", value: 1, options: { expire: 1000 } },
+    { key: "b", value: 2 },
+  ],
+  { path: "/app", secure: true }
+);
 ```
 
 ---
@@ -350,20 +389,32 @@ await storage.set("temp", "data");
 
 ## API
 
-- `stosh(options?: { type?: 'idb' | 'local' | 'session' | 'cookie'; namespace?: string })`
-- `set(key, value, options?: { expire?: number }): Promise<void>`
+- `stosh(options?: StoshOptions)`
+  - `StoshOptions`: `type`, `priority`, `namespace`, `serialize`, `deserialize`, and _`Cookie Options`_ (`path`, `domain`, `secure`, `sameSite`)
+- `set(key, value, options?: SetOptions): Promise<void>`
+  - `SetOptions`: `expire` and _`Cookie Options`_
 - `get<T>(key): Promise<T | null>`
-- `remove(key): Promise<void>`
+- `remove(key, options?: RemoveOptions): Promise<void>`
+  - `RemoveOptions`: _`Cookie Options`_
 - `clear(): Promise<void>`
 - `has(key): Promise<boolean>`
 - `getAll(): Promise<Record<string, any>>`
-- `setSync/getSync/removeSync/clearSync/hasSync/getAllSync`
-- `batchSet(entries: { key: string; value: any }[]): Promise<void>`
-- `batchGet(keys: string[]): Promise<any[]>`
-- `batchRemove(keys: string[]): Promise<void>`
-- `batchSetSync/batchGetSync/batchRemoveSync`
-- `use(method, middleware)`
-- `onChange(cb)`
+- `setSync(key, value, options?: SetOptions): void`
+- `getSync<T>(key): T | null`
+- `removeSync(key, options?: RemoveOptions): void`
+- `clearSync(): void`
+- `hasSync(key): boolean`
+- `getAllSync(): Record<string, any>`
+- `batchSet(entries: { key: string; value: any }[], options?: SetOptions): Promise<void>`
+  - Applies `SetOptions` (like `expire`, cookie options) to all entries being set.
+- `batchGet(keys: string[]): Promise<(any | null)[]>`
+- `batchRemove(keys: string[], options?: RemoveOptions): Promise<void>`
+  - Applies `RemoveOptions` (cookie options) to all keys being removed.
+- `batchSetSync(entries: { key: string; value: any }[], options?: SetOptions): void`
+- `batchGetSync(keys: string[]): (any | null)[]`
+- `batchRemoveSync(keys: string[], options?: RemoveOptions): void`
+- `use(method: 'get' | 'set' | 'remove', middleware: Middleware)`
+- `onChange(cb: (key: string | null, value: any | null) => void)`
 
 See the full API reference in [API.md](https://github.com/num2k/stosh/blob/main/documents/API.md).
 

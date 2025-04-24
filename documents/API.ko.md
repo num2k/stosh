@@ -8,6 +8,11 @@
 - `priority`: Array<"idb" | "local" | "session" | "cookie" | "memory"> (저장소 폴백 우선순위)
 - `namespace`: string (네임스페이스 접두사)
 - `serialize`/`deserialize`: 커스텀 직렬화/역직렬화 함수
+- **쿠키 전용 옵션 (`StoshOptions`에 상속됨):**
+  - `path`: string (쿠키 경로, 기본값: "/")
+  - `domain`: string (쿠키 도메인)
+  - `secure`: boolean (쿠키 secure 플래그)
+  - `sameSite`: "Strict" | "Lax" | "None" (쿠키 SameSite 속성)
 
 ### 스토리지 종류
 
@@ -49,6 +54,11 @@ stosh(options?: {
   namespace?: string;
   serialize?: (data: any) => string;
   deserialize?: (raw: string) => any;
+  // 쿠키 전용 옵션
+  path?: string;
+  domain?: string;
+  secure?: boolean;
+  sameSite?: "Strict" | "Lax" | "None";
 })
 ```
 
@@ -58,13 +68,19 @@ stosh(options?: {
 
 ### set / setSync
 
-- `set(key, value, options?)`: Promise<void> (비동기)
-- `setSync(key, value, options?)`: void (동기)
-- options.expire(ms)로 만료 지정 가능
+- `set(key, value, options?: SetOptions)`: Promise<void> (비동기)
+- `setSync(key, value, options?: SetOptions)`: void (동기)
+- `SetOptions` 포함 내용:
+  - `expire`: number (만료 시간 밀리초)
+  - `path`, `domain`, `secure`, `sameSite`: 쿠키 관련 옵션
 
 ```ts
 await storage.set("user", { name: "홍길동" }, { expire: 60000 });
 storage.setSync("user", { name: "홍길동" }, { expire: 60000 });
+
+// 쿠키 옵션 포함
+await storage.set("user", { name: "홍길동" }, { expire: 60000, path: "/" });
+storage.setSync("user", { name: "홍길동" }, { expire: 60000, secure: true });
 ```
 
 ### get / getSync
@@ -79,13 +95,23 @@ const userSync = storage.getSync<{ name: string }>("user");
 
 ### remove / removeSync
 
-- 지정된 키-값 쌍을 스토리지에서 제거합니다.
-- `remove(key)`: Promise<void> (비동기)
-- `removeSync(key)`: void (동기)
+- 지정된 키-값 쌍을 스토리지에서 제거
+- `remove(key, options?: RemoveOptions)`: Promise<void> (비동기)
+- `removeSync(key, options?: RemoveOptions)`: void (동기)
+- `RemoveOptions` 포함 내용:
+  - `path`, `domain`, `secure`, `sameSite`: 쿠키 관련 옵션
+
+```ts
+await storage.remove("user");
+
+// 쿠키 옵션 포함
+await storage.remove("user", { path: "/" });
+storage.removeSync("user", { domain: ".example.com" });
+```
 
 ### clear / clearSync
 
-- 현재 네임스페이스 내의 모든 키-값 쌍을 스토리지에서 제거합니다.
+- 현재 네임스페이스 내의 모든 키-값 쌍을 스토리지에서 제거
 - `clear()`: Promise<void> (비동기)
 - `clearSync()`: void (동기)
 
@@ -105,19 +131,56 @@ const userSync = storage.getSync<{ name: string }>("user");
 
 ### batchSet / batchSetSync
 
-- `batchSet(entries: {key, value, options?}[]): Promise<void>` (비동기)
-- `batchSetSync(entries: {key, value, options?}[]): void` (동기)
+- 두 번째 인자로 공통 옵션을 받을 수 있으며 각 객체별로 개별 옵션(`options` 필드)을 지정 가능
+- 실제 동작 시 각 객체의 개별 옵션과 공통 옵션이 병합되어 적용 (객체별 옵션이 우선, 공통 옵션은 기본값 역할)
+- `batchSet(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions)`: Promise<void> (비동기)
+- `batchSetSync(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions)`: void (동기)
+
+```ts
+await storage.batchSet(
+  [
+    { key: "a", value: 1 },
+    { key: "b", value: 2 },
+  ],
+  { expire: 3600000 }
+);
+
+// "a"는 expire+path+secure, "b"는 path+secure만 적용됨
+await storage.batchSet(
+  [
+    { key: "a", value: 1, options: { expire: 1000 } },
+    { key: "b", value: 2 },
+  ],
+  { path: "/app", secure: true }
+);
+```
 
 ### batchGet / batchGetSync
 
-- 입력한 keys 배열의 순서대로 결과 배열이 반환됩니다.
-- `batchGet(keys: string[]): Promise<any[]>` (비동기)
-- `batchGetSync(keys: string[]): any[]` (동기)
+- 여러 값을 한 번에 조회. 결과 배열은 입력한 keys 배열의 순서를 유지. 찾을 수 없거나 만료된 키에 대해서는 `null`을 반환
+- `batchGet(keys: string[])`: Promise<(any | null)[]> (비동기)
+- `batchGetSync(keys: string[])`: (any | null)[] (동기)
+
+```ts
+const values = await storage.batchGet(["a", "b", "c"]); // [1, 2, null]
+```
 
 ### batchRemove / batchRemoveSync
 
-- `batchRemove(keys: string[]): Promise<void>` (비동기)
-- `batchRemoveSync(keys: string[]): void` (동기)
+- 여러 키를 한 번에 삭제. 전달된 `RemoveOptions`(공통 옵션)을 삭제되는 모든 키에 일괄 적용
+- `batchRemove(keys: string[], options?: RemoveOptions)`: Promise<void> (비동기)
+- `batchRemoveSync(keys: string[], options?: RemoveOptions)`: void (동기)
+
+```ts
+storage.batchRemove(["a", "b"]);
+
+// 여러 키를 동일한 쿠키 경로로 삭제
+await storage.batchRemove(["a", "b"], { path: "/app" });
+storage.batchRemoveSync(["c", "d"], { path: "/app" });
+
+// path: "/app" 경로와 secure 플래그가 모두 일치하는 쿠키만 삭제
+await storage.batchRemove(["a", "b", "c"], { path: "/app", secure: true });
+```
 
 ---
 
@@ -144,8 +207,10 @@ if (stosh.isSSR) {
 
 ### use(method, middleware)
 
-- set/get/remove 동작에 미들웨어 추가
+- 'get', 'set', 'remove' 동작에 미들웨어를 추가
 - 동기/비동기 미들웨어 모두 지원
+- `method`: 'get' | 'set' | 'remove'
+- `middleware`: `(ctx: MiddlewareContext, next: () => Promise<void> | void) => Promise<void> | void`
 
 ```ts
 storage.use("set", async (ctx, next) => {
@@ -157,7 +222,7 @@ storage.use("set", async (ctx, next) => {
 ### onChange(callback)
 
 - 현재 인스턴스에서 set/remove/clear 등으로 값이 변경될 때 콜백 실행 (모든 스토리지타입 해당)
-- **`clear`/`clearSync` 관련 참고**: 이 메서드들은 내부적으로 삭제되는 각 키에 대해 개별적인 `remove` 이벤트를 발생시킵니다. 따라서 `clear` 또는 `clearSync` 호출 시, 단일 'clear' 이벤트가 아니라 각 키마다 한 번씩, 즉 여러 번 `onChange` 콜백이 실행될 수 있습니다.
+- **`clear`/`clearSync` 관련 참고**: 이 메서드들은 내부적으로 삭제되는 각 키에 대해 개별적인 `remove` 이벤트를 발생시킴. 따라서 `clear` 또는 `clearSync` 호출 시, 단일 'clear' 이벤트가 아니라 각 키마다 한 번씩, 즉 여러 번 `onChange` 콜백이 실행 됨
 - 다른 탭/윈도우에서는 localStorage/sessionStorage 값이 변경될 때 콜백이 실행 (IndexedDB, Cookie 변경은 다른 탭으로 전달되지 않음)
 - 동기/비동기 콜백 모두 지원
 
@@ -217,7 +282,8 @@ setTimeout(async () => {
 
 - 브라우저 환경에서만 `idb`/`local`/`session`/`cookie` 스토리지 사용 가능
 - SSR/Node.js 환경에서는 항상 메모리 스토리지 사용
-- 쿠키는 도메인당 약 4KB 용량 제한이 있으며, 동일 도메인 요청 시 서버로 자동 전송됨
+- 쿠키는 도메인당 약 4KB 용량 제한이 있으며, 동일 도메인 요청 시 서버로 자동 전송됨. `path`, `domain`, `secure`, `sameSite` 옵션으로 세부 제어 가능
+- 쿠키 전용 옵션 `path`, `domain`, `secure`, `sameSite`은 표준이지만 브라우저/플랫폼/HTTP/HTTPS 환경에 따라 세부 동작(쿠키 저장, 삭제, 전송, 접근 등)이 다를 수 있습니다.
 - 메모리 스토리지는 새로고침/탭 닫기 시 데이터 소실
 - 네임스페이스 미지정 혹은 중복 시 데이터 충돌(겹침) 가능
 - 스토리지 용량 초과 시 `set`에서 예외 발생 (예: localStorage의 `QuotaExceededError`)

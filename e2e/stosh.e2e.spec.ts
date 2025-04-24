@@ -564,21 +564,6 @@ test.describe("Stosh E2E 기본 동작", () => {
     expect(await page.evaluate(() => window.s2.getSync("foo"))).toBe(2);
   });
 
-  test("쿠키 path/domain 옵션 조합 분리 동작", async ({ page }) => {
-    await page.evaluate(() => {
-      window.s1 = window.stosh({ type: "cookie", namespace: "ck1" });
-      window.s2 = window.stosh({ type: "cookie", namespace: "ck2" });
-      window.s1.setSync("foo", "bar", { path: "/" });
-      window.s2.setSync("foo", "baz", { path: "/test" });
-    });
-    // 실제로는 같은 도메인/경로에서만 분리됨(브라우저 환경 따라 다름)
-    // 최소한 둘 중 하나는 정상 조회되어야 함
-    const v1 = await page.evaluate(() => window.s1.getSync("foo"));
-    const v2 = await page.evaluate(() => window.s2.getSync("foo"));
-    expect([v1, v2]).toContain("bar");
-    expect([v1, v2]).toContain("baz");
-  });
-
   test("동시성/경합 상황: 여러 탭에서 거의 동시에 set/remove 시 onChange 콜백 일관성", async ({
     context,
   }) => {

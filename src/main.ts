@@ -3,13 +3,14 @@ import {
   SetOptions,
   Middleware,
   MiddlewareContext,
+  RemoveOptions,
 } from "./types";
 import {
   MemoryStorage,
   CookieStorage,
   IndexedDBStorage,
 } from "./storage-drivers";
-import { runMiddlewareSync, runMiddleware } from "./middleware";
+import { MiddlewareChain } from "./middleware";
 import {
   STORAGE_TYPE_IDB,
   STORAGE_TYPE_LOCAL,
@@ -33,11 +34,7 @@ export class Stosh<T = any> {
   private namespace: string;
   private serializeFn: (data: any) => string;
   private deserializeFn: (raw: string) => any;
-  private middlewares: Map<MiddlewareMethod, Middleware<T>[]> = new Map([
-    [MIDDLEWARE_METHOD_GET, []],
-    [MIDDLEWARE_METHOD_SET, []],
-    [MIDDLEWARE_METHOD_REMOVE, []],
-  ]);
+  private middleware: Record<MiddlewareMethod, MiddlewareChain<T>>;
   private onChangeCb?: (key: string, value: T | null) => void | Promise<void>;
   private idbStorage?: IndexedDBStorage;
   /** Indicates if memory fallback is active */
@@ -83,6 +80,11 @@ export class Stosh<T = any> {
       this.namespace = options?.namespace ? options.namespace + ":" : "";
       this.serializeFn = options?.serialize || JSON.stringify;
       this.deserializeFn = options?.deserialize || JSON.parse;
+      this.middleware = {
+        get: new MiddlewareChain(),
+        set: new MiddlewareChain(),
+        remove: new MiddlewareChain(),
+      };
       return;
     }
 
@@ -165,6 +167,11 @@ export class Stosh<T = any> {
     this.namespace = options?.namespace ? options.namespace + ":" : "";
     this.serializeFn = options?.serialize || JSON.stringify;
     this.deserializeFn = options?.deserialize || JSON.parse;
+    this.middleware = {
+      get: new MiddlewareChain(),
+      set: new MiddlewareChain(),
+      remove: new MiddlewareChain(),
+    };
 
     if (!Stosh.isSSR && window.addEventListener) {
       if (
@@ -190,69 +197,61 @@ export class Stosh<T = any> {
     }
   }
 
-  use(method: MiddlewareMethod, mw: Middleware<T>): void {
-    if (!this.middlewares.has(method)) {
-      throw new Error(`Invalid middleware method: ${method}`);
-    }
-    const arr = this.middlewares.get(method);
-    if (arr) arr.push(mw);
+  use(method: MiddlewareMethod, mw: Middleware<T>) {
+    this.middleware[method].use(mw);
   }
 
-  private async runMiddlewareChain(
-    method: MiddlewareMethod,
-    ctx: MiddlewareContext<T>,
-    last: (ctx: MiddlewareContext<T>) => Promise<void> | void
-  ) {
-    await runMiddleware(this.middlewares.get(method) ?? [], ctx, last);
-  }
-
-  private runMiddlewareChainSync(
+  private runMiddlewareSync(
     method: MiddlewareMethod,
     ctx: MiddlewareContext<T>,
     last: (ctx: MiddlewareContext<T>) => void
   ) {
-    runMiddlewareSync(this.middlewares.get(method) ?? [], ctx, last);
+    this.middleware[method].runSync(ctx, last);
+  }
+
+  private async runMiddleware(
+    method: MiddlewareMethod,
+    ctx: MiddlewareContext<T>,
+    last: (ctx: MiddlewareContext<T>) => Promise<void> | void
+  ) {
+    await this.middleware[method].run(ctx, last);
   }
 
   private async _getInternal<U = T>(key: string): Promise<U | null> {
     const ctx: MiddlewareContext<T> = { key };
     let result: U | null = null;
 
-    await this.runMiddlewareChain(
-      MIDDLEWARE_METHOD_GET,
-      ctx,
-      async (finalCtx) => {
-        const namespacedKey = this.namespace + finalCtx.key;
-        let raw: string | null = null;
+    await this.runMiddleware(MIDDLEWARE_METHOD_GET, ctx, async (finalCtx) => {
+      const namespacedKey = this.namespace + finalCtx.key;
+      let raw: string | null = null;
 
-        if (this.idbStorage) {
-          raw = await this.idbStorage.getItem(namespacedKey);
-        } else {
-          raw = this.storage.getItem(namespacedKey);
-        }
-
-        if (!raw) {
-          result = null;
-        } else {
-          try {
-            const data = this.deserializeFn(raw);
-            if (data.e && Date.now() > data.e) {
-              if (this.idbStorage) {
-                this.idbStorage.removeItem(namespacedKey).catch(console.error);
-              } else {
-                this.storage.removeItem(namespacedKey);
-              }
-              result = null;
-            } else {
-              result = data.v as U;
-            }
-          } catch {
-            result = null;
-          }
-        }
-        finalCtx.result = result;
+      if (this.idbStorage) {
+        raw = await this.idbStorage.getItem(namespacedKey);
+      } else {
+        raw = this.storage.getItem(namespacedKey);
       }
-    );
+
+      if (!raw) {
+        result = null;
+      } else {
+        try {
+          const data = this.deserializeFn(raw);
+          if (data.e && Date.now() > data.e) {
+            if (this.idbStorage) {
+              this.idbStorage.removeItem(namespacedKey).catch(console.error);
+            } else {
+              this.storage.removeItem(namespacedKey);
+            }
+            result = null;
+          } else {
+            result = data.v as U;
+          }
+        } catch {
+          result = null;
+        }
+      }
+      finalCtx.result = result;
+    });
 
     return ctx.result === undefined ? null : (ctx.result as U | null);
   }
@@ -261,7 +260,7 @@ export class Stosh<T = any> {
     const ctx: MiddlewareContext<T> = { key };
     let result: U | null = null;
 
-    this.runMiddlewareChainSync(MIDDLEWARE_METHOD_GET, ctx, (finalCtx) => {
+    this.runMiddlewareSync(MIDDLEWARE_METHOD_GET, ctx, (finalCtx) => {
       const namespacedKey = this.namespace + finalCtx.key;
       const raw = this.storage.getItem(namespacedKey);
 
@@ -293,38 +292,34 @@ export class Stosh<T = any> {
   ): Promise<void> {
     const ctx: MiddlewareContext<T> = { key, value, options };
 
-    await this.runMiddlewareChain(
-      MIDDLEWARE_METHOD_SET,
-      ctx,
-      async (finalCtx) => {
-        if (finalCtx.value === undefined) {
-          await this._removeInternal(finalCtx.key);
-          return;
-        }
-
-        const data = {
-          v: finalCtx.value,
-          e: finalCtx.options?.expire
-            ? Date.now() + finalCtx.options.expire
-            : undefined,
-        };
-        const serializedData = this.serializeFn(data);
-        const namespacedKey = this.namespace + finalCtx.key;
-
-        if (this.idbStorage) {
-          await this.idbStorage.setItem(namespacedKey, serializedData);
-        } else {
-          this.storage.setItem(namespacedKey, serializedData);
-        }
-        this.triggerChange(finalCtx.key, finalCtx.value);
+    await this.runMiddleware(MIDDLEWARE_METHOD_SET, ctx, async (finalCtx) => {
+      if (finalCtx.value === undefined) {
+        await this._removeInternal(finalCtx.key);
+        return;
       }
-    );
+
+      const data = {
+        v: finalCtx.value,
+        e: finalCtx.options?.expire
+          ? Date.now() + finalCtx.options.expire
+          : undefined,
+      };
+      const serializedData = this.serializeFn(data);
+      const namespacedKey = this.namespace + finalCtx.key;
+
+      if (this.idbStorage) {
+        await this.idbStorage.setItem(namespacedKey, serializedData);
+      } else {
+        this.storage.setItem(namespacedKey, serializedData);
+      }
+      this.triggerChange(finalCtx.key, finalCtx.value);
+    });
   }
 
   private _setInternalSync(key: string, value: T, options?: SetOptions): void {
     const ctx: MiddlewareContext<T> = { key, value, options };
 
-    this.runMiddlewareChainSync(MIDDLEWARE_METHOD_SET, ctx, (finalCtx) => {
+    this.runMiddlewareSync(MIDDLEWARE_METHOD_SET, ctx, (finalCtx) => {
       if (finalCtx.value === undefined) {
         this._removeInternalSync(finalCtx.key);
         return;
@@ -336,10 +331,16 @@ export class Stosh<T = any> {
           ? Date.now() + finalCtx.options.expire
           : undefined,
       };
-      this.storage.setItem(
-        this.namespace + finalCtx.key,
-        this.serializeFn(data)
-      );
+      const namespacedKey = this.namespace + finalCtx.key;
+      if (this.storage instanceof CookieStorage) {
+        this.storage.setItem(
+          namespacedKey,
+          this.serializeFn(data),
+          finalCtx.options
+        );
+      } else {
+        this.storage.setItem(namespacedKey, this.serializeFn(data));
+      }
       this.triggerChange(finalCtx.key, finalCtx.value);
     });
   }
@@ -347,7 +348,7 @@ export class Stosh<T = any> {
   private async _removeInternal(key: string): Promise<void> {
     const ctx: MiddlewareContext<T> = { key };
 
-    await this.runMiddlewareChain(
+    await this.runMiddleware(
       MIDDLEWARE_METHOD_REMOVE,
       ctx,
       async (finalCtx) => {
@@ -362,11 +363,16 @@ export class Stosh<T = any> {
     );
   }
 
-  private _removeInternalSync(key: string): void {
-    const ctx: MiddlewareContext<T> = { key };
+  private _removeInternalSync(key: string, options?: SetOptions): void {
+    const ctx: MiddlewareContext<T> = { key, options };
 
-    this.runMiddlewareChainSync(MIDDLEWARE_METHOD_REMOVE, ctx, (finalCtx) => {
-      this.storage.removeItem(this.namespace + finalCtx.key);
+    this.runMiddlewareSync(MIDDLEWARE_METHOD_REMOVE, ctx, (finalCtx) => {
+      const namespacedKey = this.namespace + finalCtx.key;
+      if (this.storage instanceof CookieStorage) {
+        this.storage.removeItem(namespacedKey, finalCtx.options);
+      } else {
+        this.storage.removeItem(namespacedKey);
+      }
       this.triggerChange(finalCtx.key, null);
     });
   }
@@ -401,28 +407,25 @@ export class Stosh<T = any> {
     return this._getInternalSync<U>(key);
   }
 
-  removeSync(key: string): void {
+  removeSync(key: string, options?: RemoveOptions): void {
     if (this.idbStorage) {
       console.warn(
         "[stosh] removeSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory)."
       );
     }
-    this._removeInternalSync(key);
+    this._removeInternalSync(key, options);
   }
 
   private getNamespaceKeys(): string[] {
-    const keys: string[] = [];
-    for (let i = 0; i < this.storage.length; ++i) {
-      const k = this.storage.key(i);
-      if (k && k.startsWith(this.namespace)) keys.push(k);
-    }
-    return keys;
+    return Array.from({ length: this.storage.length })
+      .map((_, i) => this.storage.key(i))
+      .filter((k): k is string => !!k && k.startsWith(this.namespace));
   }
 
-  private stripNamespace(key: string): string {
-    return key.startsWith(this.namespace)
-      ? key.slice(this.namespace.length)
-      : key;
+  clearSync(): void {
+    this.getNamespaceKeys().forEach((k) => {
+      this._removeInternalSync(this.stripNamespace(k));
+    });
   }
 
   async clear(): Promise<void> {
@@ -437,13 +440,6 @@ export class Stosh<T = any> {
       return;
     }
     this.clearSync();
-  }
-
-  clearSync(): void {
-    const keys = this.getNamespaceKeys();
-    for (const k of keys) {
-      this._removeInternalSync(this.stripNamespace(k));
-    }
   }
 
   async has(key: string): Promise<boolean> {
@@ -489,7 +485,7 @@ export class Stosh<T = any> {
                 key: originalKey,
                 result: value,
               };
-              await this.runMiddlewareChain(
+              await this.runMiddleware(
                 MIDDLEWARE_METHOD_GET,
                 ctx,
                 async (finalCtx) => {
@@ -517,24 +513,30 @@ export class Stosh<T = any> {
   getAllSync(): Record<string, T> {
     const result: Record<string, T> = {};
     const keys = this.getNamespaceKeys();
-    for (const k of keys) {
+    keys.forEach((k) => {
       const key = this.stripNamespace(k);
       const v = this._getInternalSync<T>(key);
       if (v !== null) {
         result[key] = v;
       }
-    }
+    });
     return result;
   }
 
   async batchSet(
-    entries: Array<{ key: string; value: T; options?: SetOptions }>
+    entries: Array<{ key: string; value: T; options?: SetOptions }>,
+    options?: SetOptions
   ): Promise<void> {
     if (this.idbStorage) {
       const processedEntries: Array<{ key: string; value: string }> = [];
-      for (const { key, value, options } of entries) {
-        const ctx: MiddlewareContext<T> = { key, value, options };
-        await this.runMiddlewareChain(
+      for (const { key, value, options: entryOptions } of entries) {
+        const mergedOptions = { ...options, ...entryOptions };
+        const ctx: MiddlewareContext<T> = {
+          key,
+          value,
+          options: mergedOptions,
+        };
+        await this.runMiddleware(
           MIDDLEWARE_METHOD_SET,
           ctx,
           async (finalCtx) => {
@@ -567,15 +569,21 @@ export class Stosh<T = any> {
       }
       return;
     }
-    this.batchSetSync(entries);
+
+    entries.forEach(({ key, value, options: entryOptions }) => {
+      const mergedOptions = { ...options, ...entryOptions };
+      this._setInternalSync(key, value, mergedOptions);
+    });
   }
 
   batchSetSync(
-    entries: Array<{ key: string; value: T; options?: SetOptions }>
+    entries: Array<{ key: string; value: T; options?: SetOptions }>,
+    options?: SetOptions
   ): void {
-    for (const { key, value, options } of entries) {
-      this._setInternalSync(key, value, options);
-    }
+    entries.forEach(({ key, value, options: entryOptions }) => {
+      const mergedOptions = { ...options, ...entryOptions };
+      this._setInternalSync(key, value, mergedOptions);
+    });
   }
 
   async batchGet<U = T>(keys: string[]): Promise<(U | null)[]> {
@@ -606,7 +614,7 @@ export class Stosh<T = any> {
         }
 
         const ctx: MiddlewareContext<T> = { key, result: deserializedValue };
-        await this.runMiddlewareChain(
+        await this.runMiddleware(
           MIDDLEWARE_METHOD_GET,
           ctx,
           async (finalCtx) => {
@@ -626,12 +634,12 @@ export class Stosh<T = any> {
     return keys.map((key) => this._getInternalSync<U>(key));
   }
 
-  async batchRemove(keys: string[]): Promise<void> {
+  async batchRemove(keys: string[], options?: SetOptions): Promise<void> {
     if (this.idbStorage) {
       const keysToRemove: string[] = [];
       for (const key of keys) {
-        const ctx: MiddlewareContext<T> = { key };
-        await this.runMiddlewareChain(
+        const ctx: MiddlewareContext<T> = { key, options };
+        await this.runMiddleware(
           MIDDLEWARE_METHOD_REMOVE,
           ctx,
           async (finalCtx) => {
@@ -645,13 +653,15 @@ export class Stosh<T = any> {
       }
       return;
     }
-    this.batchRemoveSync(keys);
+    keys.forEach((key) => {
+      this._removeInternalSync(key, options);
+    });
   }
 
-  batchRemoveSync(keys: string[]): void {
-    for (const key of keys) {
-      this._removeInternalSync(key);
-    }
+  batchRemoveSync(keys: string[], options?: RemoveOptions): void {
+    keys.forEach((key) => {
+      this._removeInternalSync(key, options);
+    });
   }
 
   onChange(
@@ -663,11 +673,10 @@ export class Stosh<T = any> {
     };
   }
 
-  private serialize(data: any): string {
-    return this.serializeFn(data);
-  }
-  private deserialize(raw: string): any {
-    return this.deserializeFn(raw);
+  private stripNamespace(key: string): string {
+    return key.startsWith(this.namespace)
+      ? key.slice(this.namespace.length)
+      : key;
   }
 
   private triggerChange(key: string, value: T | null) {

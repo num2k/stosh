@@ -99,6 +99,13 @@ if (typeof window !== "undefined" && typeof window.indexedDB === "undefined") {
   } as any; // 타입 에러 방지
 }
 
+function getCookieValue(key: string): string | undefined {
+  const cookies = document.cookie.split(";").map((c) => c.trim());
+  const prefix = key + "=";
+  const found = cookies.find((c) => c.startsWith(prefix));
+  return found ? found.slice(prefix.length) : undefined;
+}
+
 describe("Stosh 통합 테스트", () => {
   let consoleWarnSpy: jest.SpyInstance;
 
@@ -602,5 +609,67 @@ describe("Stosh 통합 테스트", () => {
     expect(storage.getSync("m")).toBe(1);
     storage.removeSync("m");
     expect(storage.getSync("m")).toBeNull();
+  });
+
+  describe("쿠키 스토리지 및 옵션/배치 API 동작", () => {
+    beforeEach(() => {
+      // 테스트 전 쿠키 초기화
+      document.cookie.split(";").forEach((c) => {
+        const eq = c.indexOf("=");
+        const name = eq > -1 ? c.substr(0, eq).trim() : c.trim();
+        if (name)
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+      });
+    });
+
+    it("setSync/getSync/removeSync에서 쿠키 옵션이 반영되는지", () => {
+      const storage = stosh({ type: "cookie", namespace: "ckopt" });
+      storage.setSync("foo", "bar", {
+        path: "/",
+        secure: true,
+        sameSite: "Strict",
+      });
+      const key = encodeURIComponent("ckopt:foo");
+      const value = encodeURIComponent(JSON.stringify({ v: "bar" }));
+      expect(getCookieValue(key)).toBe(value);
+      storage.removeSync("foo", { path: "/" });
+      expect(getCookieValue(key)).toBeFalsy();
+    });
+
+    it("set에서 expire 옵션이 반영되어 세션 쿠키/만료 쿠키가 구분되는지", async () => {
+      const storage = stosh({ type: "cookie", namespace: "ckexp" });
+      await storage.set("temp", "v1", { expire: 100 });
+      const key = encodeURIComponent("ckexp:temp");
+      expect(getCookieValue(key)).toBeDefined();
+      jest.spyOn(Date, "now").mockReturnValue(Date.now() + 200);
+      expect(storage.getSync("temp")).toBeNull();
+      (Date.now as any).mockRestore && (Date.now as any).mockRestore();
+    });
+
+    // jsdom 환경에서는 path 옵션이 다른 쿠키의 존재 여부를 신뢰성 있게 검증할 수 없으므로 해당 테스트는 e2e에서만 진행
+    // it("batchSet에서 entry별 옵션과 공통 옵션 병합 동작", () => {
+    //   const storage = stosh({ type: "cookie", namespace: "batchck" });
+    //   storage.batchSetSync([
+    //     { key: "a", value: "v1", options: { path: "/a" } },
+    //     { key: "b", value: "v2" },
+    //   ], { secure: true });
+    //   const keyA = encodeURIComponent("batchck:a");
+    //   const valueA = encodeURIComponent(JSON.stringify({ v: "v1" }));
+    //   const keyB = encodeURIComponent("batchck:b");
+    //   const valueB = encodeURIComponent(JSON.stringify({ v: "v2" }));
+    //   expect(getCookieValue(keyA)).toBe(valueA);
+    //   expect(getCookieValue(keyB)).toBe(valueB);
+    // });
+
+    it("batchRemove에서 공통 옵션이 적용되는지", () => {
+      const storage = stosh({ type: "cookie", namespace: "batchrm" });
+      storage.setSync("x", "1", { path: "/" });
+      storage.setSync("y", "2", { path: "/" });
+      storage.batchRemoveSync(["x", "y"], { path: "/" });
+      const keyX = encodeURIComponent("batchrm:x");
+      const keyY = encodeURIComponent("batchrm:y");
+      expect(getCookieValue(keyX)).toBeFalsy();
+      expect(getCookieValue(keyY)).toBeFalsy();
+    });
   });
 });

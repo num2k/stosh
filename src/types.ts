@@ -1,6 +1,13 @@
 import { StorageType } from "./constants";
 
-export interface StoshOptions {
+export interface CookieOptions {
+  path?: string;
+  domain?: string;
+  secure?: boolean;
+  sameSite?: "Strict" | "Lax" | "None";
+}
+
+export interface StoshOptions extends CookieOptions {
   priority?: StorageType[];
   type?: StorageType;
   namespace?: string;
@@ -8,9 +15,11 @@ export interface StoshOptions {
   deserialize?: (raw: string) => any;
 }
 
-export interface SetOptions {
+export interface SetOptions extends CookieOptions {
   expire?: number;
 }
+
+export interface RemoveOptions extends CookieOptions {}
 
 export type MiddlewareContext<T = any> = {
   key: string;

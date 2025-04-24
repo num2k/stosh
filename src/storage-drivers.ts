@@ -1,3 +1,5 @@
+import { CookieOptions, SetOptions, RemoveOptions } from "./types";
+
 export class MemoryStorage implements Storage {
   private store = new Map<string, string>();
   get length(): number {
@@ -7,7 +9,7 @@ export class MemoryStorage implements Storage {
     this.store.clear();
   }
   getItem(key: string): string | null {
-    return this.store.has(key) ? this.store.get(key)! : null;
+    return this.store.get(key) ?? null;
   }
   key(index: number): string | null {
     return Array.from(this.store.keys())[index] ?? null;
@@ -25,40 +27,69 @@ export class CookieStorage implements Storage {
     return document.cookie ? document.cookie.split(";").length : 0;
   }
   clear(): void {
-    const cookies = document.cookie.split(";");
-    for (const cookie of cookies) {
-      const eqPos = cookie.indexOf("=");
-      const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
-      if (name) this.removeItem(name);
-    }
+    document.cookie
+      .split(";")
+      .map((c) => c.trim().split("=")[0])
+      .filter(Boolean)
+      .forEach((name) => this.removeItem(decodeURIComponent(name)));
   }
   getItem(key: string): string | null {
     const name = encodeURIComponent(key) + "=";
-    const ca = document.cookie.split(";");
-    for (let c of ca) {
-      c = c.trim();
-      if (c.indexOf(name) === 0)
-        return decodeURIComponent(c.substring(name.length));
-    }
-    return null;
+    return document.cookie
+      .split(";")
+      .map((c) => c.trim())
+      .find((c) => c.startsWith(name))
+      ?.slice(name.length)
+      ? decodeURIComponent(
+          document.cookie
+            .split(";")
+            .map((c) => c.trim())
+            .find((c) => c.startsWith(name))!
+            .slice(name.length)
+        )
+      : null;
   }
   key(index: number): string | null {
     const cookies = document.cookie.split(";");
     if (index < 0 || index >= cookies.length) return null;
-    const eqPos = cookies[index].indexOf("=");
-    return eqPos > -1
-      ? decodeURIComponent(cookies[index].substr(0, eqPos).trim())
-      : null;
+    const [name] = cookies[index].split("=");
+    return name ? decodeURIComponent(name.trim()) : null;
   }
-  removeItem(key: string): void {
-    document.cookie =
-      encodeURIComponent(key) +
-      "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+  removeItem(key: string, options?: CookieOptions): void {
+    document.cookie = buildCookieString(key, "", {
+      ...options,
+      expireDate: "Thu, 01 Jan 1970 00:00:00 GMT",
+    });
   }
-  setItem(key: string, value: string): void {
-    document.cookie =
-      encodeURIComponent(key) + "=" + encodeURIComponent(value) + "; path=/";
+  setItem(
+    key: string,
+    value: string,
+    options?: CookieOptions & { expireDate?: Date | string }
+  ): void {
+    document.cookie = buildCookieString(key, value, options);
   }
+}
+
+function buildCookieString(
+  key: string,
+  value: string,
+  options?: CookieOptions & { expireDate?: Date | string }
+): string {
+  const segments = [
+    `${encodeURIComponent(key)}=${encodeURIComponent(value)}`,
+    `path=${options?.path ?? "/"}`,
+  ];
+  if (options?.domain) segments.push(`domain=${options.domain}`);
+  if (options?.expireDate) {
+    const expires =
+      typeof options.expireDate === "string"
+        ? options.expireDate
+        : (options.expireDate as Date).toUTCString();
+    segments.push(`expires=${expires}`);
+  }
+  if (options?.secure) segments.push("secure");
+  if (options?.sameSite) segments.push(`samesite=${options.sameSite}`);
+  return segments.join("; ");
 }
 
 export class IndexedDBStorage {

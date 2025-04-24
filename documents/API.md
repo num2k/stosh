@@ -8,6 +8,11 @@
 - `priority`: Array<"idb" | "local" | "session" | "cookie" | "memory"> (storage fallback priority)
 - `namespace`: string (namespace prefix)
 - `serialize`/`deserialize`: custom serialization/deserialization functions
+- **Cookie Options (inherited by `StoshOptions`):**
+  - `path`: string (Cookie path, default: "/")
+  - `domain`: string (Cookie domain)
+  - `secure`: boolean (Cookie secure flag)
+  - `sameSite`: "Strict" | "Lax" | "None" (Cookie SameSite attribute)
 
 ### Storage Types
 
@@ -49,6 +54,11 @@ stosh(options?: {
   namespace?: string;
   serialize?: (data: any) => string;
   deserialize?: (raw: string) => any;
+  // Cookie Options
+  path?: string;
+  domain?: string;
+  secure?: boolean;
+  sameSite?: "Strict" | "Lax" | "None";
 })
 ```
 
@@ -58,13 +68,19 @@ stosh(options?: {
 
 ### set / setSync
 
-- `set(key, value, options?)`: Promise<void> (async)
-- `setSync(key, value, options?)`: void (sync)
-- options.expire(ms) for expiration
+- `set(key, value, options?: SetOptions)`: Promise<void> (async)
+- `setSync(key, value, options?: SetOptions)`: void (sync)
+- `SetOptions` includes:
+  - `expire`: number (Expiration time in milliseconds)
+  - `path`, `domain`, `secure`, `sameSite`: Cookie specific options
 
 ```ts
 await storage.set("user", { name: "Alice" }, { expire: 60000 });
 storage.setSync("user", { name: "Alice" }, { expire: 60000 });
+
+// include cookie options
+await storage.set("user", { name: "Alice" }, { expire: 60000, path: "/" });
+storage.setSync("user", { name: "Alice" }, { expire: 60000, secure: true });
 ```
 
 ### get / getSync
@@ -80,8 +96,18 @@ const userSync = storage.getSync<{ name: string }>("user");
 ### remove / removeSync
 
 - Removes the specified key-value pair from the storage.
-- `remove(key)`: Promise<void> (async)
-- `removeSync(key)`: void (sync)
+- `remove(key, options?: RemoveOptions)`: Promise<void> (async)
+- `removeSync(key, options?: RemoveOptions)`: void (sync)
+- `RemoveOptions` includes:
+  - `path`, `domain`, `secure`, `sameSite`: Cookie specific options
+
+```ts
+await storage.remove("user");
+
+// include cookie options
+await storage.remove("user", { path: "/" });
+storage.removeSync("user", { domain: ".example.com" });
+```
 
 ### clear / clearSync
 
@@ -105,19 +131,56 @@ const userSync = storage.getSync<{ name: string }>("user");
 
 ### batchSet / batchSetSync
 
-- `batchSet(entries: {key, value, options?}[]): Promise<void>` (async)
-- `batchSetSync(entries: {key, value, options?}[]): void` (sync)
+- You can provide a common option as the second argument, and also specify individual options for each entry using the `options` field.
+- At runtime, each entry’s individual options are merged with the common options (entry-specific options take precedence, while common options serve as defaults).
+- `batchSet(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions)`: Promise<void> (async)
+- `batchSetSync(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions)`: void (sync)
+
+```ts
+await storage.batchSet(
+  [
+    { key: "a", value: 1 },
+    { key: "b", value: 2 },
+  ],
+  { expire: 3600000 }
+);
+
+// "a" will have expire, path, and secure applied, while "b" will have only path and secure applied
+await storage.batchSet(
+  [
+    { key: "a", value: 1, options: { expire: 1000 } },
+    { key: "b", value: 2 },
+  ],
+  { path: "/app", secure: true }
+);
+```
 
 ### batchGet / batchGetSync
 
-- The result array is in the same order as the input keys array.
-- `batchGet(keys: string[]): Promise<any[]>` (async)
-- `batchGetSync(keys: string[]): any[]` (sync)
+- Retrieves multiple values at once. The result array maintains the order of the input keys array. Returns `null` for keys that are not found or expired.
+- `batchGet(keys: string[])`: Promise<(any | null)[]> (async)
+- `batchGetSync(keys: string[])`: (any | null)[] (sync)
+
+```ts
+const values = await storage.batchGet(["a", "b", "c"]); // [1, 2, null]
+```
 
 ### batchRemove / batchRemoveSync
 
-- `batchRemove(keys: string[]): Promise<void>` (async)
-- `batchRemoveSync(keys: string[]): void` (sync)
+- Removes multiple keys at once. The provided `RemoveOptions`(common options) are applied to all keys being removed.
+- `batchRemove(keys: string[], options?: RemoveOptions)`: Promise<void> (async)
+- `batchRemoveSync(keys: string[], options?: RemoveOptions)`: void (sync)
+
+```ts
+storage.batchRemove(["a", "b"]);
+
+// Remove multiple keys with the same cookie path
+await storage.batchRemove(["a", "b"], { path: "/app" });
+storage.batchRemoveSync(["c", "d"], { path: "/app" });
+
+// Only cookies that match both the path "/app" and the secure flag will be deleted
+await storage.batchRemove(["a", "b", "c"], { path: "/app", secure: true });
+```
 
 ---
 
@@ -144,8 +207,10 @@ if (stosh.isSSR) {
 
 ### use(method, middleware)
 
-- Add middleware to set/get/remove
-- Supports both sync and async middleware
+- Add middleware to 'get', 'set' or 'remove' operations.
+- Supports both sync and async middleware.
+- `method`: 'get' | 'set' | 'remove'
+- `middleware`: `(ctx: MiddlewareContext, next: () => Promise<void> | void) => Promise<void> | void`
 
 ```ts
 storage.use("set", async (ctx, next) => {
@@ -217,7 +282,8 @@ setTimeout(async () => {
 
 - Browser storage (`idb`, `local`, `session`, `cookie`) is only available in browser environments
 - Always uses memory storage in SSR/Node.js environments
-- Cookies have a ~4KB limit per domain and are automatically sent with requests to the same domain
+- Cookies have a ~4KB limit per domain and are automatically sent with requests to the same domain. Use path, domain, secure, sameSite options for fine-grained control.
+- The cookie-specific options `path`, `domain`, `secure`, and `sameSite` are standardized, but their detailed behavior (such as cookie storage, deletion, transmission, and access) may vary depending on the browser, platform, and whether the environment is HTTP or HTTPS.
 - Memory storage data is lost on page refresh or tab/window close
 - Not specifying or using duplicate namespaces can cause data collisions (overlap)
 - `set` throws an exception when storage quota is exceeded (e.g., `QuotaExceededError` for localStorage)
