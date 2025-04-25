@@ -2,12 +2,12 @@ node_modules/
 documents/
 src/
 public/
-e2e/
 test/
-test-results/
 test-dts/
+test-e2e/
+test-results/
+test-e2e-report/
 standalone/
-playwright-report/
 *.log
 .gitignore
 .github
