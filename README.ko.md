@@ -237,7 +237,7 @@ advancedCookieStorage.setSync("session", "xyz", {
   expire: 1000 * 60 * 30, // 30분 만료
 });
 
-// 특정 경로로 삭제
+// 옵션(path)과 일치 하는경우 삭제
 advancedCookieStorage.removeSync("user", { path: "/app" });
 ```
 

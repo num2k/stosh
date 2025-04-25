@@ -58,13 +58,13 @@ export class CookieStorage implements Storage {
   removeItem(key: string, options?: CookieOptions): void {
     document.cookie = buildCookieString(key, "", {
       ...options,
-      expireDate: "Thu, 01 Jan 1970 00:00:00 GMT",
+      expire: "Thu, 01 Jan 1970 00:00:00 GMT",
     });
   }
   setItem(
     key: string,
     value: string,
-    options?: CookieOptions & { expireDate?: Date | string }
+    options?: CookieOptions & { expire?: number | Date | string }
   ): void {
     document.cookie = buildCookieString(key, value, options);
   }
@@ -73,18 +73,20 @@ export class CookieStorage implements Storage {
 function buildCookieString(
   key: string,
   value: string,
-  options?: CookieOptions & { expireDate?: Date | string }
+  options?: CookieOptions & { expire?: number | Date | string }
 ): string {
   const segments = [
     `${encodeURIComponent(key)}=${encodeURIComponent(value)}`,
     `path=${options?.path ?? "/"}`,
   ];
   if (options?.domain) segments.push(`domain=${options.domain}`);
-  if (options?.expireDate) {
+  if (options?.expire) {
     const expires =
-      typeof options.expireDate === "string"
-        ? options.expireDate
-        : (options.expireDate as Date).toUTCString();
+      typeof options.expire === "string"
+        ? options.expire
+        : typeof options.expire === "number"
+        ? new Date(Date.now() + options.expire).toUTCString()
+        : (options.expire as Date).toUTCString();
     segments.push(`expires=${expires}`);
   }
   if (options?.secure) segments.push("secure");

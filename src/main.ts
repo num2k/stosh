@@ -307,7 +307,9 @@ export class Stosh<T = any> {
       const serializedData = this.serializeFn(data);
       const namespacedKey = this.namespace + finalCtx.key;
 
-      if (this.idbStorage) {
+      if (this.storage instanceof CookieStorage) {
+        this.storage.setItem(namespacedKey, serializedData, finalCtx.options);
+      } else if (this.idbStorage) {
         await this.idbStorage.setItem(namespacedKey, serializedData);
       } else {
         this.storage.setItem(namespacedKey, serializedData);
@@ -332,28 +334,30 @@ export class Stosh<T = any> {
           : undefined,
       };
       const namespacedKey = this.namespace + finalCtx.key;
+      const serializedData = this.serializeFn(data);
       if (this.storage instanceof CookieStorage) {
-        this.storage.setItem(
-          namespacedKey,
-          this.serializeFn(data),
-          finalCtx.options
-        );
+        this.storage.setItem(namespacedKey, serializedData, finalCtx.options);
       } else {
-        this.storage.setItem(namespacedKey, this.serializeFn(data));
+        this.storage.setItem(namespacedKey, serializedData);
       }
       this.triggerChange(finalCtx.key, finalCtx.value);
     });
   }
 
-  private async _removeInternal(key: string): Promise<void> {
-    const ctx: MiddlewareContext<T> = { key };
+  private async _removeInternal(
+    key: string,
+    options?: SetOptions
+  ): Promise<void> {
+    const ctx: MiddlewareContext<T> = { key, options };
 
     await this.runMiddleware(
       MIDDLEWARE_METHOD_REMOVE,
       ctx,
       async (finalCtx) => {
         const namespacedKey = this.namespace + finalCtx.key;
-        if (this.idbStorage) {
+        if (this.storage instanceof CookieStorage) {
+          this.storage.removeItem(namespacedKey, finalCtx.options);
+        } else if (this.idbStorage) {
           await this.idbStorage.removeItem(namespacedKey);
         } else {
           this.storage.removeItem(namespacedKey);
@@ -385,8 +389,8 @@ export class Stosh<T = any> {
     return this._getInternal<U>(key);
   }
 
-  async remove(key: string): Promise<void> {
-    await this._removeInternal(key);
+  async remove(key: string, options?: RemoveOptions): Promise<void> {
+    await this._removeInternal(key, options);
   }
 
   setSync(key: string, value: T, options?: SetOptions): void {
