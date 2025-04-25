@@ -4,3 +4,4 @@ node_modules/
 .DS_Store
 *.log
 test-e2e/build/*.js
+test-e2e-report/*.html
