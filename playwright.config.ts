@@ -14,5 +14,9 @@ export default defineConfig({
 
     reuseExistingServer: !process.env.CI,
   },
-  reporter: [["html", { outputFolder: "playwright-report", open: "never" }]],
+  reporter: [
+    ["html", { outputFolder: "test-e2e-report", open: "never" }],
+    ["junit", { outputFile: "test-e2e-report/report.xml" }],
+    ["list"],
+  ],
 });
