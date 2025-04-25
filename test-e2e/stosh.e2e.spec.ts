@@ -9,7 +9,7 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Stosh E2E 기본 동작", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/e2e/build/public/index.html");
+    await page.goto("/test-e2e/build/public/index.html");
   });
 
   test("localStorage set/get/remove/has 동작", async ({ page }) => {
@@ -193,8 +193,8 @@ test.describe("Stosh E2E 기본 동작", () => {
   test("onChange 콜백 동작 (storage 이벤트, 멀티탭)", async ({ context }) => {
     const page1 = await context.newPage();
     const page2 = await context.newPage();
-    await page1.goto("/e2e/build/public/index.html");
-    await page2.goto("/e2e/build/public/index.html");
+    await page1.goto("/test-e2e/build/public/index.html");
+    await page2.goto("/test-e2e/build/public/index.html");
     await page1.evaluate(() => {
       window.storage = window.stosh({ namespace: "chg" });
       window.changedKey = "";
@@ -305,8 +305,8 @@ test.describe("Stosh E2E 기본 동작", () => {
   }) => {
     const page1 = await context.newPage();
     const page2 = await context.newPage();
-    await page1.goto("/e2e/build/public/index.html");
-    await page2.goto("/e2e/build/public/index.html");
+    await page1.goto("/test-e2e/build/public/index.html");
+    await page2.goto("/test-e2e/build/public/index.html");
     await page1.evaluate(() => {
       window.storage = window.stosh({ namespace: "multi" });
       window.changes = [];
@@ -335,8 +335,8 @@ test.describe("Stosh E2E 기본 동작", () => {
   }) => {
     const page1 = await context.newPage();
     const page2 = await context.newPage();
-    await page1.goto("/e2e/build/public/index.html");
-    await page2.goto("/e2e/build/public/index.html");
+    await page1.goto("/test-e2e/build/public/index.html");
+    await page2.goto("/test-e2e/build/public/index.html");
     await page1.evaluate(() => {
       window.eventInfo = null;
       window.addEventListener("storage", (e) => {
@@ -480,8 +480,8 @@ test.describe("Stosh E2E 기본 동작", () => {
   test("StorageEvent oldValue/newValue 필드 정확성", async ({ context }) => {
     const page1 = await context.newPage();
     const page2 = await context.newPage();
-    await page1.goto("/e2e/build/public/index.html");
-    await page2.goto("/e2e/build/public/index.html");
+    await page1.goto("/test-e2e/build/public/index.html");
+    await page2.goto("/test-e2e/build/public/index.html");
     await page1.evaluate(() => {
       window.eventInfo = null;
       window.addEventListener("storage", (e) => {
@@ -569,8 +569,8 @@ test.describe("Stosh E2E 기본 동작", () => {
   }) => {
     const page1 = await context.newPage();
     const page2 = await context.newPage();
-    await page1.goto("/e2e/build/public/index.html");
-    await page2.goto("/e2e/build/public/index.html");
+    await page1.goto("/test-e2e/build/public/index.html");
+    await page2.goto("/test-e2e/build/public/index.html");
     await page1.evaluate(() => {
       window.storage = window.stosh({ namespace: "race" });
       window.changes = [];
@@ -648,8 +648,8 @@ test.describe("Stosh E2E 기본 동작", () => {
   test("sessionStorage 탭 격리 동작", async ({ context }) => {
     const page1 = await context.newPage();
     const page2 = await context.newPage(); // 다른 탭
-    await page1.goto("/e2e/build/public/index.html");
-    await page2.goto("/e2e/build/public/index.html");
+    await page1.goto("/test-e2e/build/public/index.html");
+    await page2.goto("/test-e2e/build/public/index.html");
 
     await page1.evaluate(() => {
       window.storage = window.stosh({
@@ -739,8 +739,8 @@ test.describe("Stosh E2E 기본 동작", () => {
   }) => {
     const page1 = await context.newPage();
     const page2 = await context.newPage();
-    await page1.goto("/e2e/build/public/index.html");
-    await page2.goto("/e2e/build/public/index.html");
+    await page1.goto("/test-e2e/build/public/index.html");
+    await page2.goto("/test-e2e/build/public/index.html");
 
     await page1.evaluate(() => {
       window.changes = [];
@@ -817,7 +817,7 @@ test.describe("Stosh E2E 기본 동작", () => {
     });
 
     const page = await context.newPage();
-    await page.goto("/e2e/build/public/index.html");
+    await page.goto("/test-e2e/build/public/index.html");
 
     await page.evaluate(() => {
       // priority 기본값 사용 (idb -> local -> session ...)

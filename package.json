@@ -18,7 +18,7 @@
     "test:e2e": "playwright test",
     "test:serve": "serve .",
     "build:test-dts": "npm run build && copy test-dts\\index.test-d.ts dist\\index.test-d.ts",
-    "build:test-e2e": "esbuild src/test-e2e-entry.ts --bundle --format=iife --outfile=e2e/build/index.js",
+    "build:test-e2e": "esbuild test-e2e/test-e2e-entry.ts --bundle --format=iife --outfile=test-e2e/build/index.js",
     "build": "rm -rf dist && npm run build:ts && npm run build:esm",
     "build:ts": "tsc",
     "build:esm": "esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs --minify",
