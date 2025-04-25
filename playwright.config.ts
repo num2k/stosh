@@ -14,4 +14,5 @@ export default defineConfig({
 
     reuseExistingServer: !process.env.CI,
   },
+  reporter: [["html", { outputFolder: "playwright-report", open: "never" }]],
 });
