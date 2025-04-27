@@ -8,6 +8,8 @@
 - `priority`: Array<"idb" | "local" | "session" | "cookie" | "memory"> (저장소 폴백 우선순위)
 - `namespace`: string (네임스페이스 접두사)
 - `serialize`/`deserialize`: 커스텀 직렬화/역직렬화 함수
+- `strictSyncFallback`: boolean (동기 API 사용 정책, 기본값: false)
+  - IndexedDB(`idb`)가 기본 스토리지일 때만 동작
 - **쿠키 전용 옵션 (`StoshOptions`에 상속됨):**
   - `path`: string (쿠키 경로, 기본값: "/")
   - `domain`: string (쿠키 도메인)
@@ -54,6 +56,12 @@ stosh(options?: {
   namespace?: string;
   serialize?: (data: any) => string;
   deserialize?: (raw: string) => any;
+  /**
+   * IndexedDB가 primary storage일 때 동기 API(setSync 등) 사용 시 에러를 throw할지 여부
+   * true면 에러 발생, false면 fallback storage로 동작 (경고만 출력)
+   * @default false
+   */
+  strictSyncFallback?: boolean;
   // 쿠키 전용 옵션
   path?: string;
   domain?: string;
@@ -122,8 +130,8 @@ storage.removeSync("user", { domain: ".example.com" });
 
 ### getAll / getAllSync
 
-- `getAll()`: Promise<Record<string, any>> (비동기)
-- `getAllSync()`: Record<string, any> (동기)
+- `getAll()`: Promise<Record<string, T>> (비동기)
+- `getAllSync()`: Record<string, T> (동기)
 
 ---
 
@@ -158,8 +166,8 @@ await storage.batchSet(
 ### batchGet / batchGetSync
 
 - 여러 값을 한 번에 조회. 결과 배열은 입력한 keys 배열의 순서를 유지. 찾을 수 없거나 만료된 키에 대해서는 `null`을 반환
-- `batchGet(keys: string[])`: Promise<(any | null)[]> (비동기)
-- `batchGetSync(keys: string[])`: (any | null)[] (동기)
+- `batchGet<U = T>(keys: string[])`: Promise<(U | null)[]> (비동기)
+- `batchGetSync<U = T>(keys: string[])`: (U | null)[] (동기)
 
 ```ts
 const values = await storage.batchGet(["a", "b", "c"]); // [1, 2, null]

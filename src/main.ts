@@ -4,6 +4,7 @@ import {
   MiddlewareContext,
   RemoveOptions,
   MiddlewareFn,
+  StoredData,
 } from "./types";
 import {
   MemoryStorage,
@@ -35,9 +36,9 @@ import { mergeOptions } from "./utils/option";
 export class Stosh<T = any> {
   private storage: Storage;
   private namespace: string;
-  private serializeFn: (data: any) => string;
-  private deserializeFn: (raw: string) => any;
-  // private middleware: Record<MiddlewareMethod, MiddlewareChain<T>>;
+  private serializeFn: (data: StoredData<T>) => string;
+  private deserializeFn: (raw: string) => StoredData<T>;
+  private strictSyncFallback: boolean;
   private middleware: Record<
     MiddlewareMethod,
     MiddlewareFn<MiddlewareContext<T>>[]
@@ -89,6 +90,7 @@ export class Stosh<T = any> {
       this.storage = new MemoryStorage();
       this.isMemoryFallback = true;
       this.namespace = options?.namespace ? options.namespace + ":" : "";
+      this.strictSyncFallback = options?.strictSyncFallback ?? false;
       this.serializeFn = options?.serialize || JSON.stringify;
       this.deserializeFn = options?.deserialize || JSON.parse;
       this.middleware = {
@@ -148,6 +150,7 @@ export class Stosh<T = any> {
     this.storage = storage!;
     this.isMemoryFallback = fallback;
     this.namespace = options?.namespace ? options.namespace + ":" : "";
+    this.strictSyncFallback = options?.strictSyncFallback ?? false; 
     this.serializeFn = options?.serialize || JSON.stringify;
     this.deserializeFn = options?.deserialize || JSON.parse;
     this.middleware = {
@@ -171,7 +174,9 @@ export class Stosh<T = any> {
                 if (!data.e || Date.now() <= data.e) {
                   value = data.v;
                 }
-              } catch {}
+              } catch (err) {
+                console.error('[stosh] Failed to deserialize storage event value:', err);
+              }
             }
             this.triggerChange(key, value);
           }
@@ -189,7 +194,6 @@ export class Stosh<T = any> {
     ctx: MiddlewareContext<T>,
     last: (ctx: MiddlewareContext<T>) => Promise<void> | void
   ) {
-    // const newCtx = { ...ctx, isSync: false };
     ctx.isSync = false;
     await runMiddlewareChain(this.middleware[method], ctx, last);
   }
@@ -199,14 +203,13 @@ export class Stosh<T = any> {
     ctx: MiddlewareContext<T>,
     last: (ctx: MiddlewareContext<T>) => void
   ) {
-    // const newCtx = { ...ctx, isSync: true };
     ctx.isSync = true;
     runMiddlewareChainSync(this.middleware[method], ctx, last);
   }
 
   private async _getInternal<U = T>(key: string): Promise<U | null> {
     const ctx: MiddlewareContext<T> = { key };
-    let result: U | null = null;
+    let result: T | null = null;
 
     await this.runMiddleware(MIDDLEWARE_METHOD_GET, ctx, async (finalCtx) => {
       const namespacedKey = this.namespace + finalCtx.key;
@@ -231,9 +234,10 @@ export class Stosh<T = any> {
             }
             result = null;
           } else {
-            result = data.v as U;
+            result = data.v;
           }
-        } catch {
+        } catch (err) {
+          console.error('[stosh] Failed to deserialize storage value:', err);
           result = null;
         }
       }
@@ -245,7 +249,7 @@ export class Stosh<T = any> {
 
   private _getInternalSync<U = T>(key: string): U | null {
     const ctx: MiddlewareContext<T> = { key };
-    let result: U | null = null;
+    let result: T | null = null;
 
     this.runMiddlewareSync(MIDDLEWARE_METHOD_GET, ctx, (finalCtx) => {
       const namespacedKey = this.namespace + finalCtx.key;
@@ -260,9 +264,10 @@ export class Stosh<T = any> {
             this.storage.removeItem(namespacedKey);
             result = null;
           } else {
-            result = data.v as U;
+            result = data.v;
           }
-        } catch {
+        } catch (err) {
+          console.error('[stosh] Failed to deserialize storage value:', err);
           result = null;
         }
       }
@@ -396,33 +401,40 @@ export class Stosh<T = any> {
   }
 
   setSync(key: string, value: T, options?: SetOptions): void {
-    if (this.idbStorage) {
-      console.warn(
-        "[stosh] setSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory)."
-      );
+    if (this.idbStorage && this.strictSyncFallback) {
+      throw new Error("[stosh] setSync is not supported with IndexedDB storage.");
+    } else if (this.idbStorage) {
+      console.warn("[stosh] setSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
     }
     this._setInternalSync(key, value, options);
   }
 
   getSync<U = T>(key: string): U | null {
-    if (this.idbStorage) {
-      console.warn(
-        "[stosh] getSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory)."
-      );
+    if (this.idbStorage && this.strictSyncFallback) {
+      throw new Error("[stosh] getSync is not supported with IndexedDB storage.");
+    } else if (this.idbStorage) {
+      console.warn("[stosh] getSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
     }
     return this._getInternalSync<U>(key);
   }
 
   removeSync(key: string, options?: RemoveOptions): void {
-    if (this.idbStorage) {
-      console.warn(
-        "[stosh] removeSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory)."
-      );
+    if (this.idbStorage && this.strictSyncFallback) {
+      throw new Error("[stosh] removeSync is not supported with IndexedDB storage.");
+    } else if (this.idbStorage) {
+      console.warn("[stosh] removeSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
     }
     this._removeInternalSync(key, options);
   }
 
   clearSync(): void {
+    if (this.idbStorage) {
+      if (this.strictSyncFallback) {
+        throw new Error("[stosh] clearSync is not supported with IndexedDB storage.");
+      } else {
+        console.warn("[stosh] clearSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
+      }
+    }
     const keys = getNamespaceKeys(this.storage, this.namespace);
     keys.forEach((k) => {
       this._removeInternalSync(stripNamespace(k, this.namespace));
@@ -448,6 +460,13 @@ export class Stosh<T = any> {
   }
 
   hasSync(key: string): boolean {
+    if (this.idbStorage) {
+      if (this.strictSyncFallback) {
+        throw new Error("[stosh] hasSync is not supported with IndexedDB storage.");
+      } else {
+        console.warn("[stosh] hasSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
+      }
+    }
     return this.getSync(key) !== null;
   }
 
@@ -478,7 +497,8 @@ export class Stosh<T = any> {
                 } else {
                   value = data.v;
                 }
-              } catch {
+              } catch (err) {
+                console.error('[stosh] Failed to deserialize storage value:', err);
                 value = null;
               }
 
@@ -512,6 +532,13 @@ export class Stosh<T = any> {
   }
 
   getAllSync(): Record<string, T> {
+    if (this.idbStorage) {
+      if (this.strictSyncFallback) {
+        throw new Error("[stosh] getAllSync is not supported with IndexedDB storage.");
+      } else {
+        console.warn("[stosh] getAllSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
+      }
+    }
     const result: Record<string, T> = {};
     const keys = getNamespaceKeys(this.storage, this.namespace);
     keys.forEach((k) => {
@@ -577,6 +604,13 @@ export class Stosh<T = any> {
     entries: Array<{ key: string; value: T; options?: SetOptions }>,
     options?: SetOptions
   ): void {
+    if (this.idbStorage) {
+      if (this.strictSyncFallback) {
+        throw new Error("[stosh] batchSetSync is not supported with IndexedDB storage.");
+      } else {
+        console.warn("[stosh] batchSetSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
+      }
+    }
     entries.forEach(({ key, value, options: entryOptions }) => {
       const mergedOptions = mergeOptions(options, entryOptions);
       this._setInternalSync(key, value, mergedOptions);
@@ -605,7 +639,8 @@ export class Stosh<T = any> {
             } else {
               deserializedValue = data.v;
             }
-          } catch {
+          } catch (err) {
+            console.error('[stosh] Failed to deserialize storage value:', err);
             deserializedValue = null;
           }
         }
@@ -628,6 +663,13 @@ export class Stosh<T = any> {
   }
 
   batchGetSync<U = T>(keys: string[]): (U | null)[] {
+    if (this.idbStorage) {
+      if (this.strictSyncFallback) {
+        throw new Error("[stosh] batchGetSync is not supported with IndexedDB storage.");
+      } else {
+        console.warn("[stosh] batchGetSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
+      }
+    }
     return keys.map((key) => this._getInternalSync<U>(key));
   }
 
@@ -654,6 +696,13 @@ export class Stosh<T = any> {
   }
 
   batchRemoveSync(keys: string[], options?: RemoveOptions): void {
+    if (this.idbStorage) {
+      if (this.strictSyncFallback) {
+        throw new Error("[stosh] batchRemoveSync is not supported with IndexedDB storage.");
+      } else {
+        console.warn("[stosh] batchRemoveSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
+      }
+    }
     keys.forEach((key) => {
       this._removeInternalSync(key, options);
     });

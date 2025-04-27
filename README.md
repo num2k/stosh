@@ -122,7 +122,7 @@ If you need synchronous APIs, use `setSync`/`getSync`/`removeSync`, etc. (Sync s
 For synchronous methods (setSync, etc.), wrap them in `try/catch` for error handling.
 
 ```ts
-const storage = stosh({ namespace: "myApp" });
+const storage = stosh({ type: "local", namespace: "myApp" });
 try {
   storage.setSync("foo", 1);
 } catch (e) {
@@ -258,6 +258,40 @@ await storage2.set("foo", "bar"); // Tries to store in cookie first
 - If `priority` is not specified but `type` is, only the specified `type` will be used (no fallback).
 - If neither `priority` nor `type` is specified, the default priority (`["idb", "local", ...]`) is applied.
 
+---
+
+## strictSyncFallback Option
+
+__Sync API Usage Policy with IndexedDB__
+
+When you create a stosh instance without specifying any options, IndexedDB (`idb`) is selected as the primary storage by default.
+Since IndexedDB does not support sync (*Sync) APIs in browsers, Stosh provides the following option to control the behavior:
+
+| Option | Behavior |
+|-|-|
+| `strictSyncFallback: false` (default) | When IndexedDB is the primary storage, calling sync APIs (`setSync`, `getSync`, etc.) will only show a warning and fallback to a sync-capable storage (e.g., localStorage). |
+| `strictSyncFallback: true` | When IndexedDB is the primary storage, calling sync APIs will throw an error, strictly prohibiting sync API usage. |
+```ts
+import { stosh } from "stosh";
+
+// Default: IndexedDB as primary storage, strictSyncFallback is false
+const storage = stosh();
+
+// strictSyncFallback: true (Error thrown if sync API is used with IndexedDB)
+const storage = stosh({
+  strictSyncFallback: true
+});
+
+try {
+  storage.setSync("foo", 1); // Error thrown!
+} catch (e) {
+  console.error(e.message);
+}
+```
+
+**Note**:
+- If you do not use (or set false for) the `strictSyncFallback` option, sync APIs will fallback to localStorage, memory, or other sync-capable storages, but you should be aware of potential data consistency and synchronization issues.
+- If you want to strictly prohibit sync API usage when IndexedDB is the primary storage, set `strictSyncFallback: true`.
 ---
 
 ## Cookie Storage Support
@@ -447,7 +481,7 @@ await storage.set("temp", "data");
 ## API
 
 - `stosh(options?: StoshOptions)`
-  - `StoshOptions`: `type`, `priority`, `namespace`, `serialize`, `deserialize`, and _`Cookie Options`_ (`path`, `domain`, `secure`, `sameSite`)
+  - `StoshOptions`: `type`, `priority`, `namespace`, `serialize`, `deserialize`, `strictSyncFallback`, and _`Cookie Options`_ (`path`, `domain`, `secure`, `sameSite`)
 - `set(key, value, options?: SetOptions): Promise<void>`
   - `SetOptions`: `expire` and _`Cookie Options`_
 - `get<T>(key): Promise<T | null>`
@@ -455,20 +489,20 @@ await storage.set("temp", "data");
   - `RemoveOptions`: _`Cookie Options`_
 - `clear(): Promise<void>`
 - `has(key): Promise<boolean>`
-- `getAll(): Promise<Record<string, any>>`
+- `getAll(): Promise<Record<string, T>>`
 - `setSync(key, value, options?: SetOptions): void`
 - `getSync<T>(key): T | null`
 - `removeSync(key, options?: RemoveOptions): void`
 - `clearSync(): void`
 - `hasSync(key): boolean`
-- `getAllSync(): Record<string, any>`
+- `getAllSync(): Record<string, T>`
 - `batchSet(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions): Promise<void>`
   - Applies `SetOptions` (like `expire`, cookie options) to all entries being set.
-- `batchGet(keys: string[]): Promise<(any | null)[]>`
+- `batchGet<U = T>(keys: string[]): Promise<(U | null)[]>`
 - `batchRemove(keys: string[], options?: RemoveOptions): Promise<void>`
   - Applies `RemoveOptions` (cookie options) to all keys being removed.
 - `batchSetSync(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions): void`
-- `batchGetSync(keys: string[]): (any | null)[]`
+- `batchGetSync<U = T>(keys: string[]): (U | null)[]`
 - `batchRemoveSync(keys: string[], options?: RemoveOptions): void`
 - `use(method: 'get' | 'set' | 'remove', middleware: (ctx, next) => Promise<void> | void)`
 - `onChange(cb: (key: string | null, value: any | null) => void)`

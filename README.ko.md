@@ -123,7 +123,7 @@ IndexedDB(비동기 저장소)만 제외하면 localStorage, sessionStorage, coo
 동기 메서드(setSync 등)는 `try/catch`로 감싸서 예외를 처리하는 것이 안전합니다.
 
 ```ts
-const storage = stosh({ namespace: "myApp" });
+const storage = stosh({ type: "local", namespace: "myApp" });
 try {
   storage.setSync("foo", 1);
 } catch (e) {
@@ -257,6 +257,41 @@ await storage2.set("foo", "bar"); // cookie에 최우선 저장 시도
 - `priority`를 지정하면 `type`은 무시되고, `priority` 배열에 명시된 순서대로 시도합니다.
 - `priority`가 없고 `type`이 지정되면 해당 타입만 사용됩니다. (폴백은 사용되지 않습니다)
 - 두 옵션 모두 없으면 기본 우선순위대로 자동 적용됩니다.
+
+---
+
+## strictSyncFallback 옵션
+
+__동기(*Sync) API와 IndexedDB 사용 정책__
+
+stosh 인스턴스를 별도의 옵션 없이 생성하면 IndexedDB(`idb`)가 primary storage로 선택됩니다.
+IndexedDB는 브라우저 특성상 동기(*Sync) API를 지원하지 않기 때문에, 아래와 같은 옵션을 지원합니다.
+
+| 옵션 | 동작 방식 |
+|-|-|
+| `strictSyncFallback: false` (기본값) | IndexedDB가 primary일 때 sync API(`setSync`, `getSync` 등) 호출 시 경고만 출력하고 fallback storage(localStorage 등)로 동작 |
+| `strictSyncFallback: true` | IndexedDB가 primary일 때 sync API 호출 시 에러를 throw하여 동기 API 사용을 강제로 막음 |
+```ts
+import { stosh } from "stosh";
+
+// 기본값: IndexedDB가 primary storage, strictSyncFallback은 false
+const storage = stosh();
+
+// strictSyncFallback: true (IndexedDB + sync API 사용 시 에러 발생)
+const storage = stosh({
+  strictSyncFallback: true
+});
+
+try {
+  storage.setSync("foo", 1); // Error 발생!
+} catch (e) {
+  console.error(e.message);
+}
+```
+
+**참고**:
+- `strictSyncFallback` 옵션을 사용하지 않으면(또는 false) fallback storage(localStorage, memory 등)를 통해 sync API가 동작하지만, 데이터 일관성이나 동기화에 주의해야 합니다.
+- IndexedDB를 primary로 사용하면서 sync API를 반드시 금지하고 싶을 때 `strictSyncFallback: true`를 권장합니다.
 
 ---
 
@@ -445,7 +480,7 @@ await storage.set("temp", "data");
 ## API
 
 - `stosh(options?: StoshOptions)`
-  - `StoshOptions`: `type`, `priority`, `namespace`, `serialize`, `deserialize`, and _`Cookie Options`_ (`path`, `domain`, `secure`, `sameSite`)
+  - `StoshOptions`: `type`, `priority`, `namespace`, `serialize`, `deserialize`, `strictSyncFallback`, and _`Cookie Options`_ (`path`, `domain`, `secure`, `sameSite`)
 - `set(key, value, options?: SetOptions): Promise<void>`
   - `SetOptions`: `expire` and _`Cookie Options`_
 - `get<T>(key): Promise<T | null>`
@@ -453,20 +488,20 @@ await storage.set("temp", "data");
   - `RemoveOptions`: _`Cookie Options`_
 - `clear(): Promise<void>`
 - `has(key): Promise<boolean>`
-- `getAll(): Promise<Record<string, any>>`
+- `getAll(): Promise<Record<string, T>>`
 - `setSync(key, value, options?: SetOptions): void`
 - `getSync<T>(key): T | null`
 - `removeSync(key, options?: RemoveOptions): void`
 - `clearSync(): void`
 - `hasSync(key): boolean`
-- `getAllSync(): Record<string, any>`
+- `getAllSync(): Record<string, T>`
 - `batchSet(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions): Promise<void>`
   - Applies `SetOptions` (like `expire`, cookie options) to all entries being set.
-- `batchGet(keys: string[]): Promise<(any | null)[]>`
+- `batchGet<U = T>(keys: string[]): Promise<(U | null)[]>`
 - `batchRemove(keys: string[], options?: RemoveOptions): Promise<void>`
   - Applies `RemoveOptions` (cookie options) to all keys being removed.
 - `batchSetSync(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions): void`
-- `batchGetSync(keys: string[]): (any | null)[]`
+- `batchGetSync<U = T>(keys: string[]): (U | null)[]`
 - `batchRemoveSync(keys: string[], options?: RemoveOptions): void`
 - `use(method: 'get' | 'set' | 'remove', middleware: (ctx, next) => Promise<void> | void)`
 - `onChange(cb: (key: string | null, value: any | null) => void)`

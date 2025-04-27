@@ -8,6 +8,8 @@
 - `priority`: Array<"idb" | "local" | "session" | "cookie" | "memory"> (storage fallback priority)
 - `namespace`: string (namespace prefix)
 - `serialize`/`deserialize`: custom serialization/deserialization functions
+- `strictSyncFallback`: boolean (Sync API usage policy, default: false)
+  - Only applies when IndexedDB (idb) is the primary storage.
 - **Cookie Options (inherited by `StoshOptions`):**
   - `path`: string (Cookie path, default: "/")
   - `domain`: string (Cookie domain)
@@ -54,6 +56,12 @@ stosh(options?: {
   namespace?: string;
   serialize?: (data: any) => string;
   deserialize?: (raw: string) => any;
+  /**
+   * Whether to throw an error when using sync APIs (such as setSync) with IndexedDB as the primary storage.
+   * If true, an error is thrown; if false, falls back to another storage (only a warning is shown).
+   * @default false
+   */
+  strictSyncFallback?: boolean;
   // Cookie Options
   path?: string;
   domain?: string;
@@ -122,8 +130,8 @@ storage.removeSync("user", { domain: ".example.com" });
 
 ### getAll / getAllSync
 
-- `getAll()`: Promise<Record<string, any>> (async)
-- `getAllSync()`: Record<string, any> (sync)
+- `getAll()`: Promise<Record<string, T>> (async)
+- `getAllSync()`: Record<string, T> (sync)
 
 ---
 
@@ -158,8 +166,8 @@ await storage.batchSet(
 ### batchGet / batchGetSync
 
 - Retrieves multiple values at once. The result array maintains the order of the input keys array. Returns `null` for keys that are not found or expired.
-- `batchGet(keys: string[])`: Promise<(any | null)[]> (async)
-- `batchGetSync(keys: string[])`: (any | null)[] (sync)
+- `batchGet<U = T>(keys: string[])`: Promise<(U | null)[]> (async)
+- `batchGetSync<U = T>(keys: string[])`: (U | null)[] (sync)
 
 ```ts
 const values = await storage.batchGet(["a", "b", "c"]); // [1, 2, null]

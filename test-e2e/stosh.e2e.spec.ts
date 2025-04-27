@@ -906,4 +906,71 @@ test.describe("Stosh E2E 기본 동작", () => {
       throw e;
     }
   });
+
+  test.describe("Stosh strictSyncFallback 정책 (IndexedDB)", () => {
+    test("IndexedDB + sync API + strictSyncFallback: true → 에러 발생", async ({ page }) => {
+      await page.goto("/test-e2e/build/public/index.html");
+      // IndexedDB + sync API + strictSyncFallback: true
+      const error = await page.evaluate(() => {
+        try {
+          const storage = window.stosh({
+            type: "idb",
+            strictSyncFallback: true,
+            namespace: "e2e-strict-err"
+          });
+          storage.setSync("foo", 1);
+          return null;
+        } catch (e) {
+          return e.message;
+        }
+      });
+      expect(error).toContain("setSync is not supported with IndexedDB storage");
+    });
+  
+    test("IndexedDB + sync API + strictSyncFallback: false → 경고 후 fallback", async ({ page }) => {
+      await page.goto("/test-e2e/build/public/index.html");
+      // IndexedDB + sync API + strictSyncFallback: false
+      let warnMsg = "";
+      page.on("console", msg => {
+        if (msg.type() === "warning" && msg.text().includes("[stosh]")) {
+          warnMsg = msg.text();
+        }
+      });
+      const value = await page.evaluate(() => {
+        const storage = window.stosh({
+          type: "idb",
+          strictSyncFallback: false,
+          namespace: "e2e-strict-warn"
+        });
+        storage.setSync("foo", 123);
+        return storage.getSync("foo");
+      });
+      expect(value).toBe(123);
+      // Playwright의 콘솔 이벤트는 비동기이므로, 약간의 대기 필요
+      await page.waitForTimeout(100);
+      expect(warnMsg).toContain("[stosh]");
+    });
+  });
+
+  test("IndexedDB + sync API + strictSyncFallback 미지정(기본값) → 경고 후 fallback", async ({ page }) => {
+    await page.goto("/test-e2e/build/public/index.html");
+    // strictSyncFallback 옵션 미지정 시 기본값(false)로 동작해야 함
+    let warnMsg = "";
+    page.on("console", msg => {
+      if (msg.type() === "warning" && msg.text().includes("[stosh]")) {
+        warnMsg = msg.text();
+      }
+    });
+    const value = await page.evaluate(() => {
+      const storage = window.stosh({
+        type: "idb",
+        namespace: "e2e-strict-default"
+      });
+      storage.setSync("foo", 456);
+      return storage.getSync("foo");
+    });
+    expect(value).toBe(456);
+    await page.waitForTimeout(100);
+    expect(warnMsg).toContain("[stosh]");
+  });
 });

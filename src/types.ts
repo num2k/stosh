@@ -7,12 +7,15 @@ export interface CookieOptions {
   sameSite?: "Strict" | "Lax" | "None";
 }
 
-export interface StoshOptions extends CookieOptions {
+export type StoredData<T> = { v: T; e?: number };
+
+export interface StoshOptions<T = any> extends CookieOptions {
   priority?: StorageType[];
   type?: StorageType;
   namespace?: string;
-  serialize?: (data: any) => string;
-  deserialize?: (raw: string) => any;
+  serialize?: (data: StoredData<T>) => string;
+  deserialize?: (raw: string) => StoredData<T>;
+  strictSyncFallback?: boolean;
 }
 
 export interface SetOptions extends CookieOptions {
@@ -25,7 +28,7 @@ export type MiddlewareContext<T = any> = {
   key: string;
   value?: T;
   options?: SetOptions;
-  result?: any;
+  result?: T | null;
   isSync?: boolean;
 };
 
