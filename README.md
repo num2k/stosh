@@ -58,7 +58,8 @@ Just add the following `script` tag, and stosh will be available as a global fun
 
 ## Basic Usage
 
-All main APIs (set/get/remove, etc.) are Promise-based async functions. Use with await or .then().
+All main APIs (set/get/remove, etc.) are Promise-based async functions. Use with `await` or `.then()`.
+Exceptions (errors) are not automatically ignored. You must always handle them explicitly with `try/catch` or `.catch()` for safety.
 
 ```ts
 import { stosh } from "stosh";
@@ -66,29 +67,68 @@ import { stosh } from "stosh";
 const storage = stosh({ namespace: "myApp" });
 
 // Store/retrieve/remove/clear
-await storage.set("user", { name: "Alice" }, { expire: 1000 * 60 * 10 });
-const user = await storage.get<{ name: string }>("user");
-await storage.remove("user");
-await storage.clear();
+// try/catch style
+try {
+  await storage.set("user", { name: "Alice" }, { expire: 1000 * 60 * 10 });
+  const user = await storage.get<{ name: string }>("user");
+  await storage.remove("user");
+  await storage.clear();
+} catch (e) {
+  // Quota exceeded, serialization error, middleware error, etc.
+  console.error("Save failed:", e);
+}
+
+// .then().catch() style
+storage
+  .set("user", { name: "Alice" }, { expire: 1000 * 60 * 10 })
+  .then(() => {
+    // On successful save
+    return storage.get<{ name: string }>("user");
+  })
+  .then((user) => {
+    // On successful retrieval
+    console.log("Query result:", user);
+  })
+  .catch((e) => {
+    // On error during save or retrieval
+    console.error("Error occurred:", e);
+  });
 
 // Check if a key exists
-if (await storage.has("user")) {
+let exists = false;
+try {
+  exists = await storage.has("user");
+} catch (e) {
+  console.error("Failed to check existence:", e);
+}
+
+if (exists) {
   // ...
 }
 
 // Get all values in the namespace
-const all = await storage.getAll();
+try {
+  const all = await storage.getAll();
+} catch (e) {
+  console.error("Failed to get all values:", e);
+}
 ```
 
 ---
 
 ## Synchronous API Usage
 
-If you need synchronous APIs, use setSync/getSync/removeSync, etc. (Sync suffix). All features (expiration, namespace, middleware, batch, custom serialization, etc.) are supported except for IndexedDB (async storage).
+If you need synchronous APIs, use `setSync`/`getSync`/`removeSync`, etc. (Sync suffix). All features (expiration, namespace, middleware, batch, custom serialization, etc.) are supported except for IndexedDB (async storage).
+For synchronous methods (setSync, etc.), wrap them in `try/catch` for error handling.
 
 ```ts
 const storage = stosh({ namespace: "myApp" });
-storage.setSync("foo", 1);
+try {
+  storage.setSync("foo", 1);
+} catch (e) {
+  // Serialization error, middleware error, etc.
+  console.error("Error occurred:", e);
+}
 const v = storage.getSync("foo");
 storage.removeSync("foo");
 storage.clearSync();
@@ -109,6 +149,8 @@ setTimeout(async () => {
 
 ## Middleware Usage Example
 
+- When you register middleware with keywords like `set`, `get`, or `remove` using `storage.use("set", ...)`, the middleware is automatically applied to both synchronous APIs (`setSync`, `getSync`, `removeSync`, etc.) and asynchronous APIs (`set`, `get`, `remove`, etc.) by default.
+
 ```ts
 storage.use("set", async (ctx, next) => {
   ctx.value = await encryptAsync(ctx.value);
@@ -118,6 +160,21 @@ storage.use("set", async (ctx, next) => {
 storage.use("get", async (ctx, next) => {
   await next();
   if (ctx.result) ctx.result = await decryptAsync(ctx.result);
+});
+```
+
+- The `ctx.isSync` is a flag that indicates whether the current operation was called from a synchronous API or an asynchronous API.
+
+```ts
+storage.use("set", async (ctx, next) => {
+  if (ctx.isSync) {
+    // Logic to be executed only in synchronous API
+    console.log("Sync set middleware");
+  } else {
+    // Logic to be executed only in Asynchronous API
+    console.log("Async set middleware");
+  }
+  await next();
 });
 ```
 
@@ -413,7 +470,7 @@ await storage.set("temp", "data");
 - `batchSetSync(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions): void`
 - `batchGetSync(keys: string[]): (any | null)[]`
 - `batchRemoveSync(keys: string[], options?: RemoveOptions): void`
-- `use(method: 'get' | 'set' | 'remove', middleware: Middleware)`
+- `use(method: 'get' | 'set' | 'remove', middleware: (ctx, next) => Promise<void> | void)`
 - `onChange(cb: (key: string | null, value: any | null) => void)`
 
 See the full API reference in [API.md](https://github.com/num2k/stosh/blob/main/documents/API.md).

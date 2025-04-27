@@ -26,9 +26,10 @@ export type MiddlewareContext<T = any> = {
   value?: T;
   options?: SetOptions;
   result?: any;
+  isSync?: boolean;
 };
 
-export type Middleware<T = any> = (
-  ctx: MiddlewareContext<T>,
+export type MiddlewareFn<T> = (
+  ctx: T,
   next: () => Promise<void> | void
 ) => Promise<void> | void;

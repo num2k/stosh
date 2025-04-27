@@ -207,14 +207,43 @@ if (stosh.isSSR) {
 
 ### use(method, middleware)
 
-- 'get', 'set', 'remove' 동작에 미들웨어를 추가
-- 동기/비동기 미들웨어 모두 지원
 - `method`: 'get' | 'set' | 'remove'
 - `middleware`: `(ctx: MiddlewareContext, next: () => Promise<void> | void) => Promise<void> | void`
+- 동기/비동기 메서드에 모두 적용 됨
 
 ```ts
 storage.use("set", async (ctx, next) => {
   ctx.value = await encryptAsync(ctx.value);
+  await next();
+});
+
+storage.use("get", async (ctx, next) => {
+  await next();
+  if (ctx.result !== null) {
+    await someAsyncFunction(ctx.result);
+  }
+});
+```
+
+- `MiddlewareContext`에 포함된 `isSync`는 현재 동작이 동기 API에서 호출된 것인지, 비동기 API에서 호출된 것인지를 구분할 수 있는 플래그임
+
+```ts
+MiddlewareContext<T>: {
+  key: string
+  value: T
+  options: SetOptions
+  result: any
+  isSync: boolean
+}
+
+storage.use("set", async (ctx, next) => {
+  if (ctx.isSync) {
+    // 동기 API에서만 실행할 로직
+    console.log("Sync set middleware");
+  } else {
+    // 비동기 API에서만 실행할 로직
+    console.log("Async set middleware");
+  }
   await next();
 });
 ```
@@ -280,15 +309,18 @@ setTimeout(async () => {
 
 ## 8. 환경별 동작 및 주의사항
 
+- 모든 비동기 메서드(`set`, `get`, `remove`, `clear` 등)는 반드시 `try/catch` 또는 `.then().catch()`로 예외를 처리해야 함
+- 동기 메서드(`setSync`, `getSync` 등)는 `try/catch`로 감싸서 예외를 처리해야 함
 - 브라우저 환경에서만 `idb`/`local`/`session`/`cookie` 스토리지 사용 가능
 - SSR/Node.js 환경에서는 항상 메모리 스토리지 사용
 - 쿠키는 도메인당 약 4KB 용량 제한이 있으며, 동일 도메인 요청 시 서버로 자동 전송됨. `path`, `domain`, `secure`, `sameSite` 옵션으로 세부 제어 가능
-- 쿠키 전용 옵션 `path`, `domain`, `secure`, `sameSite`은 표준이지만 브라우저/플랫폼/HTTP/HTTPS 환경에 따라 세부 동작(쿠키 저장, 삭제, 전송, 접근 등)이 다를 수 있습니다.
+- 쿠키 전용 옵션 `path`, `domain`, `secure`, `sameSite`은 표준이지만 브라우저/플랫폼/HTTP/HTTPS 환경에 따라 세부 동작(쿠키 저장, 삭제, 전송, 접근 등)이 다를 수 있음
 - 메모리 스토리지는 새로고침/탭 닫기 시 데이터 소실
 - 네임스페이스 미지정 혹은 중복 시 데이터 충돌(겹침) 가능
 - 스토리지 용량 초과 시 `set`에서 예외 발생 (예: localStorage의 `QuotaExceededError`)
 - 직렬화/역직렬화/미들웨어 오류 발생 시 해당 작업이 중단되고 예외가 발생할 수 있음
 - `onChange` 콜백은 다른 탭/윈도우에서의 변경 감지를 위해 브라우저의 storage 이벤트를 사용하므로, localStorage/sessionStorage 변경 시에만 다른 탭으로 전파됨 (IndexedDB, Cookie는 전파되지 않음)
+- `onChange` 콜백에서 비동기 작업을 할 경우, 내부 예외는 전체 동작에 영향을 주지 않으나 콜백 내에서 직접 예외를 처리하는 것이 안전함
 
 ---
 

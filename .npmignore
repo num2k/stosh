@@ -2,6 +2,7 @@ node_modules/
 documents/
 src/
 public/
+temp/
 test/
 test-dts/
 test-e2e/

@@ -107,6 +107,11 @@ function getCookieValue(key: string): string | undefined {
 }
 
 describe("Stosh 통합 테스트", () => {
+  test("localStorage 동작 확인", () => {
+    window.localStorage.setItem("foo", "bar");
+    expect(window.localStorage.getItem("foo")).toBe("bar");
+  });
+
   let consoleWarnSpy: jest.SpyInstance;
 
   beforeEach(() => {
@@ -143,15 +148,19 @@ describe("Stosh 통합 테스트", () => {
       expect(storage.getSync("bar")).toBeNull();
     });
     it("비동기 set/get/remove/has/clear", async () => {
-      await storage.set("foo", 123);
-      expect(await storage.get("foo")).toBe(123);
-      expect(await storage.has("foo")).toBe(true);
-      await storage.remove("foo");
-      expect(await storage.get("foo")).toBeNull();
-      expect(await storage.has("foo")).toBe(false);
-      await storage.set("bar", 1);
-      await storage.clear();
-      expect(await storage.get("bar")).toBeNull();
+      try {
+        await storage.set("foo", 123);
+        expect(await storage.get("foo")).toBe(123);
+        expect(await storage.has("foo")).toBe(true);
+        await storage.remove("foo");
+        expect(await storage.get("foo")).toBeNull();
+        expect(await storage.has("foo")).toBe(false);
+        await storage.set("bar", 1);
+        await storage.clear();
+        expect(await storage.get("bar")).toBeNull();
+      } catch (e) {
+        fail(e);
+      }
     });
   });
 
@@ -276,11 +285,11 @@ describe("Stosh 통합 테스트", () => {
   });
 
   // 순환 참조 객체 저장 시 예외
-  it("순환 참조 객체 저장 시 예외", () => {
+  it("순환 참조 객체 저장 시 예외", async () => {
     const storage = stosh({ type: "local", namespace: "circular" });
     const a: any = {};
     a.self = a;
-    expect(() => storage.setSync("circ", a)).toThrow();
+    await expect(storage.set("circ", a)).rejects.toThrow();
   });
 
   // 미들웨어에서 next()를 아예 호출하지 않으면 set 무시
@@ -329,9 +338,13 @@ describe("Stosh 통합 테스트", () => {
   // 타입 안전성(제네릭 타입 보장)
   it("타입 안전성(제네릭 타입 보장)", async () => {
     const storage = stosh({ type: "local" });
-    await storage.set("user", { name: "홍길동" });
-    const user = await storage.get("user");
-    expect(user && typeof user.name === "string").toBe(true);
+    try {
+      await storage.set("user", { name: "홍길동" });
+      const user = await storage.get("user");
+      expect(user && typeof user.name === "string").toBe(true);
+    } catch (e) {
+      fail(e);
+    }
     // 타입 에러 검증은 실제로는 타입 테스트(예: dtslint)에서 별도로 수행하는 것이 좋음
   });
 
@@ -642,7 +655,7 @@ describe("Stosh 통합 테스트", () => {
       const key = encodeURIComponent("ckexp:temp");
       expect(getCookieValue(key)).toBeDefined();
       jest.spyOn(Date, "now").mockReturnValue(Date.now() + 200);
-      expect(storage.getSync("temp")).toBeNull();
+      expect(await storage.get("temp")).toBeNull();
       (Date.now as any).mockRestore && (Date.now as any).mockRestore();
     });
 

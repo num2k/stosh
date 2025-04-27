@@ -59,6 +59,7 @@ pnpm add stosh
 ## 기본 사용법
 
 stosh의 기본 API(set/get/remove 등)는 모두 `Promise` 기반의 비동기 함수입니다. `await` 또는 `.then()`으로 사용하세요.
+예외(에러)는 자동으로 무시되지 않고, 반드시 사용자가 직접 `try/catch` 또는 `.catch()`로 처리해야 안전 합니다.
 
 ```ts
 import { stosh } from "stosh";
@@ -66,18 +67,51 @@ import { stosh } from "stosh";
 const storage = stosh({ namespace: "myApp" });
 
 // 값 저장/조회/삭제
-await storage.set("user", { name: "홍길동" }, { expire: 1000 * 60 * 10 });
-const user = await storage.get<{ name: string }>("user");
-await storage.remove("user");
-await storage.clear();
+// try/catch 방식
+try {
+  await storage.set("user", { name: "홍길동" }, { expire: 1000 * 60 * 10 });
+  const user = await storage.get<{ name: string }>("user");
+  await storage.remove("user");
+  await storage.clear();
+} catch (e) {
+  // 용량 초과, 직렬화 오류, 미들웨어 오류 등
+  console.error("저장 실패:", e);
+}
+
+// .then().catch() 방식
+storage
+  .set("user", { name: "홍길동" }, { expire: 1000 * 60 * 10 })
+  .then(() => {
+    // 저장 성공 시 실행
+    return storage.get<{ name: string }>("user");
+  })
+  .then((user) => {
+    // 조회 성공 시 실행
+    console.log("조회 결과:", user);
+  })
+  .catch((e) => {
+    // 저장 또는 조회 중 에러 발생 시 실행
+    console.error("에러 발생:", e);
+  });
 
 // 키 존재 여부
-if (await storage.has("user")) {
+let exists = false;
+try {
+  exists = await storage.has("user");
+} catch (e) {
+  console.error("존재 여부 확인 실패:", e);
+}
+
+if (exists) {
   // ...
 }
 
 // 네임스페이스 내 전체 값 조회
-const all = await storage.getAll();
+try {
+  const all = await storage.getAll();
+} catch (e) {
+  console.error("전체 값 조회 실패:", e);
+}
 ```
 
 ---
@@ -86,10 +120,16 @@ const all = await storage.getAll();
 
 동기 API가 필요한 경우 `setSync`/`getSync`/`removeSync` 등 `Sync` 접미사 메서드를 사용하세요.
 IndexedDB(비동기 저장소)만 제외하면 localStorage, sessionStorage, cookie, memory와 모든 기능(만료, 네임스페이스, 미들웨어, batch, 커스텀 직렬화 등)을 지원합니다.
+동기 메서드(setSync 등)는 `try/catch`로 감싸서 예외를 처리하는 것이 안전합니다.
 
 ```ts
 const storage = stosh({ namespace: "myApp" });
-storage.setSync("foo", 1);
+try {
+  storage.setSync("foo", 1);
+} catch (e) {
+  // 직렬화 오류, 미들웨어 오류 등
+  console.error("에러 발생:", e);
+}
 const v = storage.getSync("foo");
 storage.removeSync("foo");
 storage.clearSync();
@@ -110,6 +150,8 @@ setTimeout(async () => {
 
 ## 미들웨어 활용 예시
 
+- `storage.use("set", ...)`처럼 `set`, `get`, `remove` 키워드로 미들웨어를 등록하면 기본적으로 동기 API(`setSync`, `getSync`, `removeSync` 등)와 비동기 API(`set`, `get`, `remove` 등) 모두에 동일하게 적용됩니다.
+
 ```ts
 storage.use("set", async (ctx, next) => {
   ctx.value = await encryptAsync(ctx.value);
@@ -119,6 +161,21 @@ storage.use("set", async (ctx, next) => {
 storage.use("get", async (ctx, next) => {
   await next();
   if (ctx.result) ctx.result = await decryptAsync(ctx.result);
+});
+```
+
+- `ctx.isSync`는 현재 동작이 동기 API에서 호출된 것인지, 비동기 API에서 호출된 것인지를 구분할 수 있는 플래그입니다.
+
+```ts
+storage.use("set", async (ctx, next) => {
+  if (ctx.isSync) {
+    // 동기 API에서만 실행할 로직
+    console.log("Sync set middleware");
+  } else {
+    // 비동기 API에서만 실행할 로직
+    console.log("Async set middleware");
+  }
+  await next();
 });
 ```
 
@@ -411,7 +468,7 @@ await storage.set("temp", "data");
 - `batchSetSync(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions): void`
 - `batchGetSync(keys: string[]): (any | null)[]`
 - `batchRemoveSync(keys: string[], options?: RemoveOptions): void`
-- `use(method: 'get' | 'set' | 'remove', middleware: Middleware)`
+- `use(method: 'get' | 'set' | 'remove', middleware: (ctx, next) => Promise<void> | void)`
 - `onChange(cb: (key: string | null, value: any | null) => void)`
 
 전체 API 문서는 [API.ko.md](https://github.com/num2k/stosh/blob/main/documents/API.ko.md)에서 확인할 수 있습니다.

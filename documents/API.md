@@ -207,14 +207,43 @@ if (stosh.isSSR) {
 
 ### use(method, middleware)
 
-- Add middleware to 'get', 'set' or 'remove' operations.
-- Supports both sync and async middleware.
 - `method`: 'get' | 'set' | 'remove'
 - `middleware`: `(ctx: MiddlewareContext, next: () => Promise<void> | void) => Promise<void> | void`
+- Middleware is applied to both synchronous and asynchronous methods.
 
 ```ts
 storage.use("set", async (ctx, next) => {
   ctx.value = await encryptAsync(ctx.value);
+  await next();
+});
+
+storage.use("get", async (ctx, next) => {
+  await next();
+  if (ctx.result !== null) {
+    await someAsyncFunction(ctx.result);
+  }
+});
+```
+
+- The `isSync` property included in `MiddlewareContext` is a flag that indicates whether the current operation was called from a synchronous API or an asynchronous API.
+
+```ts
+MiddlewareContext<T>: {
+  key: string
+  value: T
+  options: SetOptions
+  result: any
+  isSync: boolean
+}
+
+storage.use("set", async (ctx, next) => {
+  if (ctx.isSync) {
+    // Logic to be executed only in synchronous API
+    console.log("Sync set middleware");
+  } else {
+    // Logic to be executed only in Asynchronous API
+    console.log("Async set middleware");
+  }
   await next();
 });
 ```
@@ -280,6 +309,8 @@ setTimeout(async () => {
 
 ## 8. Environment-Specific Behavior and Notes
 
+- All async methods (`set`, `get`, `remove`, `clear`, etc.) always return a Promise. You must use `try/catch` or `.then().catch()` to handle errors.
+- Sync methods (`setSync`, `getSync`, etc.) should be wrapped in `try/catch` for error handling.
 - Browser storage (`idb`, `local`, `session`, `cookie`) is only available in browser environments
 - Always uses memory storage in SSR/Node.js environments
 - Cookies have a ~4KB limit per domain and are automatically sent with requests to the same domain. Use path, domain, secure, sameSite options for fine-grained control.
@@ -289,6 +320,7 @@ setTimeout(async () => {
 - `set` throws an exception when storage quota is exceeded (e.g., `QuotaExceededError` for localStorage)
 - Serialization/deserialization or middleware errors can interrupt the operation and cause exceptions
 - The `onChange` callback uses the browser's `storage` event for cross-tab change detection, so only `localStorage`/`sessionStorage` changes are propagated to other tabs (IndexedDB, Cookie changes are not propagated)
+- If you use async logic in `onChange` callbacks, handle errors inside the callback to avoid silent failures.
 
 ---
 

@@ -1,16 +1,15 @@
 import {
   StoshOptions,
   SetOptions,
-  Middleware,
   MiddlewareContext,
   RemoveOptions,
+  MiddlewareFn,
 } from "./types";
 import {
   MemoryStorage,
   CookieStorage,
   IndexedDBStorage,
 } from "./storage-drivers";
-import { MiddlewareChain } from "./middleware";
 import {
   STORAGE_TYPE_IDB,
   STORAGE_TYPE_LOCAL,
@@ -25,6 +24,10 @@ import {
   MiddlewareMethod,
   StorageType,
 } from "./constants";
+import { runMiddlewareChain, runMiddlewareChainSync } from "./utils/middleware";
+import { getNamespaceKeys, stripNamespace } from "./utils/namespace";
+import { selectSyncStorage } from "./utils/storage";
+import { mergeOptions } from "./utils/option";
 
 /**
  * Stosh: Middleware-based storage wrapper
@@ -34,7 +37,15 @@ export class Stosh<T = any> {
   private namespace: string;
   private serializeFn: (data: any) => string;
   private deserializeFn: (raw: string) => any;
-  private middleware: Record<MiddlewareMethod, MiddlewareChain<T>>;
+  // private middleware: Record<MiddlewareMethod, MiddlewareChain<T>>;
+  private middleware: Record<
+    MiddlewareMethod,
+    MiddlewareFn<MiddlewareContext<T>>[]
+  > = {
+    get: [],
+    set: [],
+    remove: [],
+  };
   private onChangeCb?: (key: string, value: T | null) => void | Promise<void>;
   private idbStorage?: IndexedDBStorage;
   /** Indicates if memory fallback is active */
@@ -73,7 +84,7 @@ export class Stosh<T = any> {
         ? DEFAULT_PRIORITY_SYNC
         : DEFAULT_PRIORITY);
 
-    if (typeof window === "undefined") {
+    if (Stosh.isSSR) {
       fallback = true;
       this.storage = new MemoryStorage();
       this.isMemoryFallback = true;
@@ -81,9 +92,9 @@ export class Stosh<T = any> {
       this.serializeFn = options?.serialize || JSON.stringify;
       this.deserializeFn = options?.deserialize || JSON.parse;
       this.middleware = {
-        get: new MiddlewareChain(),
-        set: new MiddlewareChain(),
-        remove: new MiddlewareChain(),
+        get: [],
+        set: [],
+        remove: [],
       };
       return;
     }
@@ -97,33 +108,8 @@ export class Stosh<T = any> {
           );
           // Find synchronous fallback storage
           const syncPriority = priority.filter((t) => t !== STORAGE_TYPE_IDB);
-          for (const syncType of syncPriority) {
-            try {
-              let syncCandidate: Storage | null = null;
-              if (syncType === STORAGE_TYPE_LOCAL)
-                syncCandidate = window.localStorage;
-              else if (syncType === STORAGE_TYPE_SESSION)
-                syncCandidate = window.sessionStorage;
-              else if (syncType === STORAGE_TYPE_COOKIE)
-                syncCandidate = new CookieStorage();
-              else if (syncType === STORAGE_TYPE_MEMORY)
-                syncCandidate = new MemoryStorage();
-
-              if (syncCandidate && syncType !== STORAGE_TYPE_MEMORY) {
-                const testKey = "__stosh_test_key__" + Math.random();
-                syncCandidate.setItem(testKey, "1");
-                syncCandidate.removeItem(testKey);
-              }
-              if (syncCandidate) {
-                storage = syncCandidate; // Assign the found sync storage
-                break; // Found a working sync fallback
-              }
-            } catch {
-              continue; // Try next sync type if current one fails
-            }
-          }
-          if (!storage) storage = new MemoryStorage(); // Ensure fallback storage exists if no sync one worked
-          break; // Exit main loop once IDB (and its sync fallback) is set up
+          storage = selectSyncStorage(syncPriority);
+          break;
         } else if (type === STORAGE_TYPE_LOCAL) {
           storage = window.localStorage;
         } else if (type === STORAGE_TYPE_SESSION) {
@@ -154,10 +140,7 @@ export class Stosh<T = any> {
       }
     }
 
-    if (!storage && !this.idbStorage) {
-      storage = new MemoryStorage();
-      fallback = true;
-    } else if (!storage && this.idbStorage) {
+    if (!storage) {
       storage = new MemoryStorage();
       fallback = true;
     }
@@ -168,9 +151,9 @@ export class Stosh<T = any> {
     this.serializeFn = options?.serialize || JSON.stringify;
     this.deserializeFn = options?.deserialize || JSON.parse;
     this.middleware = {
-      get: new MiddlewareChain(),
-      set: new MiddlewareChain(),
-      remove: new MiddlewareChain(),
+      get: [],
+      set: [],
+      remove: [],
     };
 
     if (!Stosh.isSSR && window.addEventListener) {
@@ -180,7 +163,7 @@ export class Stosh<T = any> {
       ) {
         window.addEventListener("storage", (e) => {
           if (e.key && e.key.startsWith(this.namespace) && this.onChangeCb) {
-            const key = this.stripNamespace(e.key);
+            const key = stripNamespace(e.key, this.namespace);
             let value: T | null = null;
             if (e.newValue) {
               try {
@@ -197,16 +180,8 @@ export class Stosh<T = any> {
     }
   }
 
-  use(method: MiddlewareMethod, mw: Middleware<T>) {
-    this.middleware[method].use(mw);
-  }
-
-  private runMiddlewareSync(
-    method: MiddlewareMethod,
-    ctx: MiddlewareContext<T>,
-    last: (ctx: MiddlewareContext<T>) => void
-  ) {
-    this.middleware[method].runSync(ctx, last);
+  use(method: MiddlewareMethod, mw: MiddlewareFn<MiddlewareContext<T>>) {
+    this.middleware[method].push(mw);
   }
 
   private async runMiddleware(
@@ -214,7 +189,19 @@ export class Stosh<T = any> {
     ctx: MiddlewareContext<T>,
     last: (ctx: MiddlewareContext<T>) => Promise<void> | void
   ) {
-    await this.middleware[method].run(ctx, last);
+    // const newCtx = { ...ctx, isSync: false };
+    ctx.isSync = false;
+    await runMiddlewareChain(this.middleware[method], ctx, last);
+  }
+
+  private runMiddlewareSync(
+    method: MiddlewareMethod,
+    ctx: MiddlewareContext<T>,
+    last: (ctx: MiddlewareContext<T>) => void
+  ) {
+    // const newCtx = { ...ctx, isSync: true };
+    ctx.isSync = true;
+    runMiddlewareChainSync(this.middleware[method], ctx, last);
   }
 
   private async _getInternal<U = T>(key: string): Promise<U | null> {
@@ -382,15 +369,30 @@ export class Stosh<T = any> {
   }
 
   async set(key: string, value: T, options?: SetOptions): Promise<void> {
-    await this._setInternal(key, value, options);
+    if (this.idbStorage) {
+      await this._setInternal(key, value, options);
+    } else {
+      return Promise.resolve().then(() =>
+        this._setInternalSync(key, value, options)
+      );
+    }
   }
 
   async get<U = T>(key: string): Promise<U | null> {
-    return this._getInternal<U>(key);
+    if (this.idbStorage) {
+      return this._getInternal<U>(key);
+    }
+    return Promise.resolve().then(() => this._getInternalSync<U>(key));
   }
 
   async remove(key: string, options?: RemoveOptions): Promise<void> {
-    await this._removeInternal(key, options);
+    if (this.idbStorage) {
+      await this._removeInternal(key, options);
+    } else {
+      return Promise.resolve().then(() =>
+        this._removeInternalSync(key, options)
+      );
+    }
   }
 
   setSync(key: string, value: T, options?: SetOptions): void {
@@ -420,15 +422,10 @@ export class Stosh<T = any> {
     this._removeInternalSync(key, options);
   }
 
-  private getNamespaceKeys(): string[] {
-    return Array.from({ length: this.storage.length })
-      .map((_, i) => this.storage.key(i))
-      .filter((k): k is string => !!k && k.startsWith(this.namespace));
-  }
-
   clearSync(): void {
-    this.getNamespaceKeys().forEach((k) => {
-      this._removeInternalSync(this.stripNamespace(k));
+    const keys = getNamespaceKeys(this.storage, this.namespace);
+    keys.forEach((k) => {
+      this._removeInternalSync(stripNamespace(k, this.namespace));
     });
   }
 
@@ -436,14 +433,14 @@ export class Stosh<T = any> {
     if (this.idbStorage) {
       const keysToNotify = (await this.idbStorage.getAllKeys())
         .filter((k) => k.startsWith(this.namespace))
-        .map((k) => this.stripNamespace(k));
+        .map((k) => stripNamespace(k, this.namespace));
 
       await this.idbStorage.clear();
 
       keysToNotify.forEach((key) => this.triggerChange(key, null));
       return;
     }
-    this.clearSync();
+    return Promise.resolve().then(() => this.clearSync());
   }
 
   async has(key: string): Promise<boolean> {
@@ -468,7 +465,7 @@ export class Stosh<T = any> {
           if (cursor) {
             const namespacedKey = cursor.key as string;
             if (namespacedKey.startsWith(this.namespace)) {
-              const originalKey = this.stripNamespace(namespacedKey);
+              const originalKey = stripNamespace(namespacedKey, this.namespace);
               const rawValue = cursor.value as string;
               let value: T | null = null;
               try {
@@ -511,14 +508,14 @@ export class Stosh<T = any> {
         tx.onerror = () => reject(tx.error);
       });
     }
-    return this.getAllSync();
+    return Promise.resolve().then(() => this.getAllSync());
   }
 
   getAllSync(): Record<string, T> {
     const result: Record<string, T> = {};
-    const keys = this.getNamespaceKeys();
+    const keys = getNamespaceKeys(this.storage, this.namespace);
     keys.forEach((k) => {
-      const key = this.stripNamespace(k);
+      const key = stripNamespace(k, this.namespace);
       const v = this._getInternalSync<T>(key);
       if (v !== null) {
         result[key] = v;
@@ -534,7 +531,7 @@ export class Stosh<T = any> {
     if (this.idbStorage) {
       const processedEntries: Array<{ key: string; value: string }> = [];
       for (const { key, value, options: entryOptions } of entries) {
-        const mergedOptions = { ...options, ...entryOptions };
+        const mergedOptions = mergeOptions(options, entryOptions);
         const ctx: MiddlewareContext<T> = {
           key,
           value,
@@ -573,11 +570,7 @@ export class Stosh<T = any> {
       }
       return;
     }
-
-    entries.forEach(({ key, value, options: entryOptions }) => {
-      const mergedOptions = { ...options, ...entryOptions };
-      this._setInternalSync(key, value, mergedOptions);
-    });
+    return Promise.resolve().then(() => this.batchSetSync(entries, options));
   }
 
   batchSetSync(
@@ -585,7 +578,7 @@ export class Stosh<T = any> {
     options?: SetOptions
   ): void {
     entries.forEach(({ key, value, options: entryOptions }) => {
-      const mergedOptions = { ...options, ...entryOptions };
+      const mergedOptions = mergeOptions(options, entryOptions);
       this._setInternalSync(key, value, mergedOptions);
     });
   }
@@ -631,7 +624,7 @@ export class Stosh<T = any> {
       }
       return finalResults;
     }
-    return this.batchGetSync<U>(keys);
+    return Promise.resolve().then(() => this.batchGetSync<U>(keys));
   }
 
   batchGetSync<U = T>(keys: string[]): (U | null)[] {
@@ -657,9 +650,7 @@ export class Stosh<T = any> {
       }
       return;
     }
-    keys.forEach((key) => {
-      this._removeInternalSync(key, options);
-    });
+    return Promise.resolve().then(() => this.batchRemoveSync(keys, options));
   }
 
   batchRemoveSync(keys: string[], options?: RemoveOptions): void {
@@ -675,12 +666,6 @@ export class Stosh<T = any> {
     return () => {
       this.onChangeCb = undefined;
     };
-  }
-
-  private stripNamespace(key: string): string {
-    return key.startsWith(this.namespace)
-      ? key.slice(this.namespace.length)
-      : key;
   }
 
   private triggerChange(key: string, value: T | null) {

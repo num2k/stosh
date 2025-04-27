@@ -10,6 +10,28 @@ export default function Home() {
     const logs: string[] = [];
     // [생성/조회 테스트] (삭제/만료/clear 없음)
     const storage = stosh({ namespace: "test" });
+
+    storage.use("set", async (ctx, next) => {
+      if (ctx.isSync) {
+        // 동기 전용 미들웨어 로직
+        // console.log("Sync set middleware");
+      } else {
+        // 비동기 전용 미들웨어 로직
+        console.log("Async set middleware");
+        if (ctx.value) {
+          console.log("set===?", ctx.key, ctx.value);
+        }
+      }
+
+      await next();
+    });
+
+    storage.use("get", async (ctx, next) => {
+      await next();
+      if (ctx.result !== null && !ctx.isSync) {
+        console.log("get===?", ctx.key, ctx.result);
+      }
+    });
     // 동기 저장/조회
     storage.setSync("syncKey", "syncValue", {
       expire: 1000 * 5,
@@ -35,23 +57,47 @@ export default function Home() {
     logs.push(
       "[타입 안전성] typed get: (기대값: 홍길동) → " + (user && user.name)
     );
+
+    // 비동기 저장/조회
+    const asyncStorage = stosh({ namespace: "async-storage" });
+    asyncStorage
+      .set("user-async", { name: "비동기 홍길동" })
+      .then(() => {
+        const v = asyncStorage.get("user-async");
+        return v;
+      })
+      .then((v) => {
+        logs.push(
+          "[비동기 저장/조회] typed get: (기대값: 비동기 홍길동) → " +
+            (v && v.name)
+        );
+      })
+      .catch((e) => {
+        console.error("타입 안전성 오류:", e);
+      });
+
     // 비동기 배치 저장/조회 (persist는 삭제/만료 없음)
     (async () => {
-      await storage.batchSet([
-        { key: "a", value: 1 },
-        { key: "b", value: 2 },
-        {
-          key: "persist",
-          value: "indexeddb",
-          // options: { expire: 1000 * 5 },
-        },
-        {
-          key: "c",
-          value: 3,
-          options: { expire: 1000 * 5 },
-        },
-      ]);
-      const batchVals = await storage.batchGet(["a", "b", "persist", "c"]);
+      let batchVals;
+      try {
+        await storage.batchSet([
+          { key: "a", value: 1 },
+          { key: "b", value: 2 },
+          {
+            key: "persist",
+            value: "indexeddb",
+            // options: { expire: 1000 * 5 },
+          },
+          {
+            key: "c",
+            value: 3,
+            options: { expire: 1000 * 5 },
+          },
+        ]);
+        batchVals = await storage.batchGet(["a", "b", "persist", "c"]);
+      } catch (error) {
+        console.error("Batch set error:", error);
+      }
       logs.push(
         "[비동기 배치 get] batch get: (기대값: [1,2,'indexeddb',3 ]) → " +
           JSON.stringify(batchVals)
