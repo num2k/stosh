@@ -211,29 +211,107 @@ if (stosh.isSSR) {
 
 ---
 
-## 6. Middleware and Events
+## 6. Middleware System
 
 ### use(method, middleware)
 
-- `method`: 'get' | 'set' | 'remove'
-- `middleware`: `(ctx: MiddlewareContext, next: () => Promise<void> | void) => Promise<void> | void`
-- Middleware is applied to both synchronous and asynchronous methods.
+- `use(method: 'get' | 'set' | 'remove', middleware, options?)`
+  - `middleware`:  
+    - Synchronous: `(ctx: MiddlewareContext, next: () => void) => void`  
+    - Asynchronous: `(ctx: MiddlewareContext, next: () => Promise<void> | void) => Promise<void> | void`
+  - `options?`: `{ prepend?: boolean; append?: boolean // default: true }`  
+- Returns: Unsubscribe function
+
+__Creating Middleware__
 
 ```ts
-storage.use("set", async (ctx, next) => {
-  ctx.value = await encryptAsync(ctx.value);
-  await next();
-});
+const storage = stosh({ type: "local" });
 
-storage.use("get", async (ctx, next) => {
-  await next();
-  if (ctx.result !== null) {
-    await someAsyncFunction(ctx.result);
-  }
-});
+const logger = (ctx, next) => {
+  console.log("set called", ctx);
+  next();
+};
+
+storage.use("set", logger);
 ```
 
-- The `isSync` property included in `MiddlewareContext` is a flag that indicates whether the current operation was called from a synchronous API or an asynchronous API.
+__use() options__
+
+```ts
+storage.use("set", logger, { prepend: true });
+```
+
+_Middleware Execution Order Example_
+
+```ts
+const storage = stosh({ type: "local" });
+
+const mwA = (ctx, next) => { ctx.value += "_A"; next(); };
+const mwB = (ctx, next) => { ctx.value += "_B"; next(); };
+
+// Registered with append (default): executed in registration order
+storage.use("set", mwA); // 1st
+storage.use("set", mwB); // 2nd
+
+storage.setSync("foo", "start");
+// Execution order: mwA → mwB
+// Result: "start_A_B"
+console.log(storage.getSync("foo")); // "start_A_B"
+
+// Registered with prepend: always added to the front
+const mwC = (ctx, next) => { ctx.value += "_C"; next(); };
+storage.use("set", mwC, { prepend: true }); // always at the front
+
+storage.setSync("bar", "start");
+// Execution order: mwC → mwA → mwB
+// Result: "start_C_A_B"
+console.log(storage.getSync("bar")); // "start_C_A_B"
+```
+
+- `append: true` is the default, but you can specify it explicitly when you want to make it clear that the middleware should be added to the end of the chain (e.g., for dynamic or conditional middleware registration).
+
+  ```ts
+  // Always add logging middleware at the end
+  storage.use("set", logger, { append: true });
+  ```
+
+__Duplicate Registration Policy__
+
+- The same function reference (e.g., a function stored in the same variable) cannot be registered more than once.
+  - If you try to register the same function reference again, a warning is shown and it will not actually be added.
+
+  ```ts
+  const mw = (ctx, next) => next();
+  storage.use("set", mw);
+  storage.use("set", mw); // Duplicate registration is ignored
+  ```
+
+- __Different functions__ (even if their code is identical) are allowed to be registered together.
+
+  ```ts
+  storage.use("set", (ctx, next) => next());
+  storage.use("set", (ctx, next) => next()); // Both are registered
+  ```
+
+__Unsubscribing (Removing Middleware)__
+- The `use` method returns an unsubscribe function.
+- Calling the unsubscribe function removes the middleware from the chain.
+
+```ts
+const mw = (ctx, next) => next();
+const unsub = storage.use("set", mw);
+unsub(); // mw middleware is removed
+```
+
+__Notes and Caveats__
+
+- If you do not call `next()` within a middleware, the rest of the chain will not be executed.
+- Both synchronous and asynchronous middleware are supported, but only synchronous middleware should be used with synchronous methods (like `setSync`).
+- If an error occurs during serialization/deserialization, it will be logged to the console and the operation will be ignored.
+
+__isSync Property__
+
+The `isSync` property included in `MiddlewareContext` is a flag that indicates whether the current operation was called from a synchronous API or an asynchronous API.
 
 ```ts
 MiddlewareContext<T>: {
@@ -256,22 +334,33 @@ storage.use("set", async (ctx, next) => {
 });
 ```
 
-### onChange(callback)
+---
+
+## 7. onChange(callback)
 
 - The callback is executed when a value is changed within the current instance using methods like `set`/`remove`/`clear` (applies to all storage types).
 - **Note on `clear`/`clearSync`**: These methods internally trigger individual `remove` events for each key being deleted. Therefore, the `onChange` callback might be executed multiple times (once per key) when `clear` or `clearSync` is called, rather than a single 'clear' event.
 - The callback is also executed when a `localStorage` or `sessionStorage` value is changed in other tabs/windows (Changes in IndexedDB and Cookie are not propagated to other tabs).
 - Supports both synchronous and asynchronous callbacks.
+- You can register multiple callbacks and unsubscribe each one individually.
 
 ```ts
 storage.onChange(async (key, value) => {
   await syncToServer(key, value);
 });
+
+// Multiple subscriptions are allowed
+const unsub1 = storage.onChange((key, value) => {});
+const unsub2 = storage.onChange((key, value) => {});
+
+// Each subscription can be unsubscribed separately
+unsub1();
+unsub2();
 ```
 
 ---
 
-## 7. Advanced Features and Examples
+## 8. Advanced Features and Examples
 
 ### Type Safety
 
@@ -315,7 +404,7 @@ setTimeout(async () => {
 
 ---
 
-## 8. Environment-Specific Behavior and Notes
+## 9. Environment-Specific Behavior and Notes
 
 - All async methods (`set`, `get`, `remove`, `clear`, etc.) always return a Promise. You must use `try/catch` or `.then().catch()` to handle errors.
 - Sync methods (`setSync`, `getSync`, etc.) should be wrapped in `try/catch` for error handling.
@@ -332,7 +421,7 @@ setTimeout(async () => {
 
 ---
 
-## 9. Common Error Cases
+## 10. Common Error Cases
 
 - localStorage full: `QuotaExceededError: Failed to execute 'setItem' on 'Storage': The quota has been exceeded.`
 - JSON serialization error: `TypeError: Converting circular structure to JSON`

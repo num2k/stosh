@@ -203,6 +203,14 @@ await cacheStorage.set("temp", 123);
 storage.onChange(async (key, value) => {
   await syncToServer(key, value);
 });
+
+// 여러 개 등록 가능
+const unsub1 = storage.onChange((key, value) => {});
+const unsub2 = storage.onChange((key, value) => {});
+
+// 각각 해제 가능
+unsub1();
+unsub2();
 ```
 
 ---
@@ -427,13 +435,42 @@ await storage.batchSet(
 
 ## 타입 안전성
 
-TypeScript 제네릭을 활용해 저장/조회 데이터의 타입을 안전하게 보장합니다.
+stosh 인스턴스를 생성할 때 제네릭 타입을 명시하면, 저장/조회되는 데이터의 타입이 컴파일 타임에 강제되어 실수로 잘못된 타입의 데이터를 저장하거나 조회하는 것을 방지할 수 있습니다.
 
 ```ts
 const storage = stosh<{ name: string }>();
 await storage.set("user", { name: "홍길동" });
 const user = await storage.get("user"); // 타입: { name: string } | null
 ```
+
+_특징_
+
+- 모든 key의 value 타입이 명확하게 강제됨
+- `batchSet`, `batchGet` 등에서도 동일한 구조만 허용
+- 타입 안전성이 최우선
+
+__유연성 우선 (제네릭 생략)__
+
+stosh 인스턴스를 제네릭 없이 생성하면 key별로 value 타입을 자유롭게 저장/조회할 수 있습니다.
+이 경우 타입 안전성은 보장되지 않지만, batch API 등에서 다양한 타입을 유연하게 다룰 수 있습니다.
+
+```ts
+const storage = stosh(); // stosh<any>() 와 같음
+storage.batchSet([
+  { key: "a", value: 1 },
+  { key: "b", value: { name: "홍길동" } },
+  { key: "c", value: [1, 2, 3] },
+]);
+const a = storage.get("a"); // 타입: any
+const b = storage.get("b"); // 타입: any
+const c = storage.get("c"); // 타입: any
+```
+
+_특징_
+
+- key별 value 타입이 자유로움
+- `batchSet`, `batchGet` 등에서 다양한 타입 혼용 가능
+- 타입 안전성은 보장되지 않으므로, get/set 시 타입 파라미터를 직접 지정해 사용하는 것이 권장됨
 
 ---
 
@@ -503,7 +540,11 @@ await storage.set("temp", "data");
 - `batchSetSync(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions): void`
 - `batchGetSync<U = T>(keys: string[]): (U | null)[]`
 - `batchRemoveSync(keys: string[], options?: RemoveOptions): void`
-- `use(method: 'get' | 'set' | 'remove', middleware: (ctx, next) => Promise<void> | void)`
+- `use(method: 'get' | 'set' | 'remove', middleware, options?)`
+  - `middleware`:
+    - Synchronous: `(ctx: MiddlewareContext, next: () => void) => void`  
+    - Asynchronous: `(ctx: MiddlewareContext, next: () => Promise<void> | void) => Promise<void> | void`
+  - `options`: `{prepend?: boolean; append?: boolean}`
 - `onChange(cb: (key: string | null, value: any | null) => void)`
 
 전체 API 문서는 [API.ko.md](https://github.com/num2k/stosh/blob/main/documents/API.ko.md)에서 확인할 수 있습니다.

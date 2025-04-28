@@ -202,6 +202,14 @@ await cacheStorage.set("temp", 123);
 storage.onChange(async (key, value) => {
   await syncToServer(key, value);
 });
+
+// Multiple subscriptions are allowed
+const unsub1 = storage.onChange((key, value) => {});
+const unsub2 = storage.onChange((key, value) => {});
+
+// Each subscription can be unsubscribed separately
+unsub1();
+unsub2();
 ```
 
 ---
@@ -428,7 +436,8 @@ await storage.batchSet(
 
 ## Type Safety
 
-TypeScript generics ensure type safety for stored/retrieved data.
+When you create a `stosh` instance with a `generic type`, the type of data you store and retrieve is enforced at compile time, preventing you from accidentally storing or retrieving data of the wrong type.
+
 
 ```ts
 const storage = stosh<{ name: string }>();
@@ -436,6 +445,35 @@ await storage.set("user", { name: "Alice" });
 const user = await storage.get("user"); // type: { name: string } | null
 ```
 
+_Features_
+
+- The value type for every key is strictly enforced.
+- Only the same structure is allowed for `batchSet`, `batchGet`, etc.
+- Type safety is prioritized.
+
+__Flexibility (Without Generic)__
+
+If you create a `stosh` instance without specifying a generic,
+you can freely store and retrieve values of any type for each key.
+In this case, type safety is not guaranteed, but you can flexibly handle various types in batch APIs.
+
+```ts
+const storage = stosh(); // Equivalent to stosh<any>()
+storage.batchSet([
+  { key: "a", value: 1 },
+  { key: "b", value: { name: "Hong Gil-dong" } },
+  { key: "c", value: [1, 2, 3] },
+]);
+const a = storage.get("a"); // type: any
+const b = storage.get("b"); // type: any
+const c = storage.get("c"); // type: any
+```
+
+_Features_
+
+- Value types are flexible for each key.
+- You can mix various types in `batchSet`, `batchGet`, etc.
+- Since type safety is not guaranteed, it is recommended to specify the type parameter directly when using get/set.
 ---
 
 ## Additional Usage Examples
@@ -504,7 +542,11 @@ await storage.set("temp", "data");
 - `batchSetSync(entries: { key: string; value: any, options?: SetOptions }[], options?: SetOptions): void`
 - `batchGetSync<U = T>(keys: string[]): (U | null)[]`
 - `batchRemoveSync(keys: string[], options?: RemoveOptions): void`
-- `use(method: 'get' | 'set' | 'remove', middleware: (ctx, next) => Promise<void> | void)`
+- `use(method: 'get' | 'set' | 'remove', middleware, options?)`
+  - `middleware`:
+    - Synchronous: `(ctx: MiddlewareContext, next: () => void) => void`  
+    - Asynchronous: `(ctx: MiddlewareContext, next: () => Promise<void> | void) => Promise<void> | void`
+  - `options`: `{prepend?: boolean; append?: boolean}`
 - `onChange(cb: (key: string | null, value: any | null) => void)`
 
 See the full API reference in [API.md](https://github.com/num2k/stosh/blob/main/documents/API.md).

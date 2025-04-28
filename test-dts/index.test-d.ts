@@ -1,5 +1,5 @@
 import { stosh } from "../src";
-
+import { expectType } from "tsd";
 stosh().setSync("foo", Symbol("x"));
 
 // 올바른 타입 저장/조회
@@ -79,3 +79,12 @@ all;
 const arr2 = s3.batchGetSync(["a", "b"]);
 // Expect ({ name: string } | null)[]
 arr2;
+
+
+const st = stosh<{ foo: { a: number } }>({ type: "memory" });
+st.batchSet([{ key: "foo", value: { foo: { a: 1 } } }]);
+expectType<{ foo: { a: number } } | null>(await st.get("foo"));
+
+const st1 = stosh({ type: "memory" });
+st1.batchSet([{ key: "foo", value: {a: 1} }]);
+expectType<{ a: number } | null>(await st1.get("foo"));

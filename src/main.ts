@@ -5,6 +5,8 @@ import {
   RemoveOptions,
   MiddlewareFn,
   StoredData,
+  MiddlewareOptions,
+  UnsubscribeFn,
 } from "./types";
 import {
   MemoryStorage,
@@ -29,6 +31,8 @@ import { runMiddlewareChain, runMiddlewareChainSync } from "./utils/middleware";
 import { getNamespaceKeys, stripNamespace } from "./utils/namespace";
 import { selectSyncStorage } from "./utils/storage";
 import { mergeOptions } from "./utils/option";
+import { warnIfAsyncMiddleware } from "./utils/asyncCheck";
+import { checkSyncAvailable } from "./utils/syncAvailableCheck";
 
 /**
  * Stosh: Middleware-based storage wrapper
@@ -39,15 +43,12 @@ export class Stosh<T = any> {
   private serializeFn: (data: StoredData<T>) => string;
   private deserializeFn: (raw: string) => StoredData<T>;
   private strictSyncFallback: boolean;
-  private middleware: Record<
-    MiddlewareMethod,
-    MiddlewareFn<MiddlewareContext<T>>[]
-  > = {
+  private middleware: Record<MiddlewareMethod, MiddlewareFn<T>[]> = {
     get: [],
     set: [],
     remove: [],
   };
-  private onChangeCb?: (key: string, value: T | null) => void | Promise<void>;
+  private onChangeCbs: Array<(key: string, value: T | null) => void | Promise<void>> = [];
   private idbStorage?: IndexedDBStorage;
   /** Indicates if memory fallback is active */
   readonly isMemoryFallback: boolean;
@@ -74,16 +75,16 @@ export class Stosh<T = any> {
       options?.type && options.type !== STORAGE_TYPE_IDB
         ? true
         : options?.priority
-        ? options.priority.every((t) => t !== STORAGE_TYPE_IDB)
-        : false;
+          ? options.priority.every((t) => t !== STORAGE_TYPE_IDB)
+          : false;
 
     let priority: StorageType[] =
       options?.priority ||
       (options?.type
         ? [options.type]
         : requiresSync
-        ? DEFAULT_PRIORITY_SYNC
-        : DEFAULT_PRIORITY);
+          ? DEFAULT_PRIORITY_SYNC
+          : DEFAULT_PRIORITY);
 
     if (Stosh.isSSR) {
       fallback = true;
@@ -150,7 +151,7 @@ export class Stosh<T = any> {
     this.storage = storage!;
     this.isMemoryFallback = fallback;
     this.namespace = options?.namespace ? options.namespace + ":" : "";
-    this.strictSyncFallback = options?.strictSyncFallback ?? false; 
+    this.strictSyncFallback = options?.strictSyncFallback ?? false;
     this.serializeFn = options?.serialize || JSON.stringify;
     this.deserializeFn = options?.deserialize || JSON.parse;
     this.middleware = {
@@ -165,7 +166,7 @@ export class Stosh<T = any> {
         this.storage === window.sessionStorage
       ) {
         window.addEventListener("storage", (e) => {
-          if (e.key && e.key.startsWith(this.namespace) && this.onChangeCb) {
+          if (e.key && e.key.startsWith(this.namespace)) {
             const key = stripNamespace(e.key, this.namespace);
             let value: T | null = null;
             if (e.newValue) {
@@ -185,8 +186,33 @@ export class Stosh<T = any> {
     }
   }
 
-  use(method: MiddlewareMethod, mw: MiddlewareFn<MiddlewareContext<T>>) {
-    this.middleware[method].push(mw);
+  use(
+    method: MiddlewareMethod,
+    mw: MiddlewareFn<T>,
+    options?: MiddlewareOptions
+  ): UnsubscribeFn {
+    const chain = this.middleware[method];
+    // Prevent duplicate registration
+    if (chain.includes(mw)) {
+      console.warn("[stosh] The same middleware has already been registered.");
+      return () => { };
+    }
+
+    // Synchronous method with asynchronous middleware registration warning
+    const syncMethods = ["set", "get", "remove"];
+    const isAsync = typeof mw === "function" && mw.constructor && mw.constructor.name === "AsyncFunction";
+    if (syncMethods.includes(method) && isAsync) {
+      warnIfAsyncMiddleware.call(this, method);
+    }
+    if (options?.prepend) {
+      chain.unshift(mw);
+    } else {
+      chain.push(mw);
+    }
+    return () => {
+      const idx = chain.indexOf(mw);
+      if (idx >= 0) chain.splice(idx, 1);
+    };
   }
 
   private async runMiddleware(
@@ -277,11 +303,30 @@ export class Stosh<T = any> {
     return ctx.result === undefined ? null : (ctx.result as U | null);
   }
 
+  private validateStorableValue(value: any) {
+    if (typeof value === "function") throw new Error("[stosh] Function type value cannot be stored.");
+    try { JSON.stringify(value); }
+    catch { throw new Error("[stosh] Circular reference value cannot be stored."); }
+  }
+
+  private getNamespacedKey(key: string): string {
+    return this.namespace + key;
+  }
+
+  private serializeData(value: T, options?: SetOptions) {
+    return this.serializeFn({
+      v: value,
+      e: options?.expire ? Date.now() + options.expire : undefined
+    });
+  }
+
   private async _setInternal(
     key: string,
     value: T,
     options?: SetOptions
   ): Promise<void> {
+    this.validateStorableValue(value);
+
     const ctx: MiddlewareContext<T> = { key, value, options };
 
     await this.runMiddleware(MIDDLEWARE_METHOD_SET, ctx, async (finalCtx) => {
@@ -289,16 +334,8 @@ export class Stosh<T = any> {
         await this._removeInternal(finalCtx.key);
         return;
       }
-
-      const data = {
-        v: finalCtx.value,
-        e: finalCtx.options?.expire
-          ? Date.now() + finalCtx.options.expire
-          : undefined,
-      };
-      const serializedData = this.serializeFn(data);
-      const namespacedKey = this.namespace + finalCtx.key;
-
+      const namespacedKey = this.getNamespacedKey(finalCtx.key);
+      const serializedData = this.serializeData(finalCtx.value, finalCtx.options);
       if (this.storage instanceof CookieStorage) {
         this.storage.setItem(namespacedKey, serializedData, finalCtx.options);
       } else if (this.idbStorage) {
@@ -311,6 +348,7 @@ export class Stosh<T = any> {
   }
 
   private _setInternalSync(key: string, value: T, options?: SetOptions): void {
+    this.validateStorableValue(value);
     const ctx: MiddlewareContext<T> = { key, value, options };
 
     this.runMiddlewareSync(MIDDLEWARE_METHOD_SET, ctx, (finalCtx) => {
@@ -318,15 +356,8 @@ export class Stosh<T = any> {
         this._removeInternalSync(finalCtx.key);
         return;
       }
-
-      const data = {
-        v: finalCtx.value,
-        e: finalCtx.options?.expire
-          ? Date.now() + finalCtx.options.expire
-          : undefined,
-      };
-      const namespacedKey = this.namespace + finalCtx.key;
-      const serializedData = this.serializeFn(data);
+      const namespacedKey = this.getNamespacedKey(finalCtx.key);
+      const serializedData = this.serializeData(finalCtx.value, finalCtx.options);
       if (this.storage instanceof CookieStorage) {
         this.storage.setItem(namespacedKey, serializedData, finalCtx.options);
       } else {
@@ -341,12 +372,11 @@ export class Stosh<T = any> {
     options?: SetOptions
   ): Promise<void> {
     const ctx: MiddlewareContext<T> = { key, options };
-
     await this.runMiddleware(
       MIDDLEWARE_METHOD_REMOVE,
       ctx,
       async (finalCtx) => {
-        const namespacedKey = this.namespace + finalCtx.key;
+        const namespacedKey = this.getNamespacedKey(finalCtx.key);
         if (this.storage instanceof CookieStorage) {
           this.storage.removeItem(namespacedKey, finalCtx.options);
         } else if (this.idbStorage) {
@@ -361,9 +391,8 @@ export class Stosh<T = any> {
 
   private _removeInternalSync(key: string, options?: SetOptions): void {
     const ctx: MiddlewareContext<T> = { key, options };
-
     this.runMiddlewareSync(MIDDLEWARE_METHOD_REMOVE, ctx, (finalCtx) => {
-      const namespacedKey = this.namespace + finalCtx.key;
+      const namespacedKey = this.getNamespacedKey(finalCtx.key);
       if (this.storage instanceof CookieStorage) {
         this.storage.removeItem(namespacedKey, finalCtx.options);
       } else {
@@ -401,40 +430,25 @@ export class Stosh<T = any> {
   }
 
   setSync(key: string, value: T, options?: SetOptions): void {
-    if (this.idbStorage && this.strictSyncFallback) {
-      throw new Error("[stosh] setSync is not supported with IndexedDB storage.");
-    } else if (this.idbStorage) {
-      console.warn("[stosh] setSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
-    }
+    checkSyncAvailable(this.idbStorage, this.strictSyncFallback, "setSync");
+    warnIfAsyncMiddleware.call(this, "set");
     this._setInternalSync(key, value, options);
   }
 
   getSync<U = T>(key: string): U | null {
-    if (this.idbStorage && this.strictSyncFallback) {
-      throw new Error("[stosh] getSync is not supported with IndexedDB storage.");
-    } else if (this.idbStorage) {
-      console.warn("[stosh] getSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
-    }
+    checkSyncAvailable(this.idbStorage, this.strictSyncFallback, "getSync");
+    warnIfAsyncMiddleware.call(this, "get");
     return this._getInternalSync<U>(key);
   }
 
   removeSync(key: string, options?: RemoveOptions): void {
-    if (this.idbStorage && this.strictSyncFallback) {
-      throw new Error("[stosh] removeSync is not supported with IndexedDB storage.");
-    } else if (this.idbStorage) {
-      console.warn("[stosh] removeSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
-    }
+    checkSyncAvailable(this.idbStorage, this.strictSyncFallback, "removeSync");
+    warnIfAsyncMiddleware.call(this, "remove");
     this._removeInternalSync(key, options);
   }
 
   clearSync(): void {
-    if (this.idbStorage) {
-      if (this.strictSyncFallback) {
-        throw new Error("[stosh] clearSync is not supported with IndexedDB storage.");
-      } else {
-        console.warn("[stosh] clearSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
-      }
-    }
+    checkSyncAvailable(this.idbStorage, this.strictSyncFallback, "clearSync");
     const keys = getNamespaceKeys(this.storage, this.namespace);
     keys.forEach((k) => {
       this._removeInternalSync(stripNamespace(k, this.namespace));
@@ -460,13 +474,7 @@ export class Stosh<T = any> {
   }
 
   hasSync(key: string): boolean {
-    if (this.idbStorage) {
-      if (this.strictSyncFallback) {
-        throw new Error("[stosh] hasSync is not supported with IndexedDB storage.");
-      } else {
-        console.warn("[stosh] hasSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
-      }
-    }
+    checkSyncAvailable(this.idbStorage, this.strictSyncFallback, "hasSync");
     return this.getSync(key) !== null;
   }
 
@@ -532,13 +540,7 @@ export class Stosh<T = any> {
   }
 
   getAllSync(): Record<string, T> {
-    if (this.idbStorage) {
-      if (this.strictSyncFallback) {
-        throw new Error("[stosh] getAllSync is not supported with IndexedDB storage.");
-      } else {
-        console.warn("[stosh] getAllSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
-      }
-    }
+    checkSyncAvailable(this.idbStorage, this.strictSyncFallback, "getAllSync");
     const result: Record<string, T> = {};
     const keys = getNamespaceKeys(this.storage, this.namespace);
     keys.forEach((k) => {
@@ -604,13 +606,7 @@ export class Stosh<T = any> {
     entries: Array<{ key: string; value: T; options?: SetOptions }>,
     options?: SetOptions
   ): void {
-    if (this.idbStorage) {
-      if (this.strictSyncFallback) {
-        throw new Error("[stosh] batchSetSync is not supported with IndexedDB storage.");
-      } else {
-        console.warn("[stosh] batchSetSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
-      }
-    }
+    checkSyncAvailable(this.idbStorage, this.strictSyncFallback, "batchSetSync");
     entries.forEach(({ key, value, options: entryOptions }) => {
       const mergedOptions = mergeOptions(options, entryOptions);
       this._setInternalSync(key, value, mergedOptions);
@@ -663,13 +659,7 @@ export class Stosh<T = any> {
   }
 
   batchGetSync<U = T>(keys: string[]): (U | null)[] {
-    if (this.idbStorage) {
-      if (this.strictSyncFallback) {
-        throw new Error("[stosh] batchGetSync is not supported with IndexedDB storage.");
-      } else {
-        console.warn("[stosh] batchGetSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
-      }
-    }
+    checkSyncAvailable(this.idbStorage, this.strictSyncFallback, "batchGetSync");
     return keys.map((key) => this._getInternalSync<U>(key));
   }
 
@@ -696,31 +686,23 @@ export class Stosh<T = any> {
   }
 
   batchRemoveSync(keys: string[], options?: RemoveOptions): void {
-    if (this.idbStorage) {
-      if (this.strictSyncFallback) {
-        throw new Error("[stosh] batchRemoveSync is not supported with IndexedDB storage.");
-      } else {
-        console.warn("[stosh] batchRemoveSync called when IndexedDB is the primary storage. Operation will use the synchronous fallback storage (e.g., localStorage, memory).");
-      }
-    }
+    checkSyncAvailable(this.idbStorage, this.strictSyncFallback, "batchRemoveSync");
     keys.forEach((key) => {
       this._removeInternalSync(key, options);
     });
   }
 
-  onChange(
-    cb: (key: string, value: T | null) => void | Promise<void>
-  ): () => void {
-    this.onChangeCb = cb;
+  onChange(cb: (key: string, value: T | null) => void | Promise<void>): () => void {
+    this.onChangeCbs.push(cb);
     return () => {
-      this.onChangeCb = undefined;
+      this.onChangeCbs = this.onChangeCbs.filter(fn => fn !== cb);
     };
   }
 
   private triggerChange(key: string, value: T | null) {
-    if (this.onChangeCb) {
+    for (const cb of this.onChangeCbs) {
       try {
-        const result = this.onChangeCb(key, value);
+        const result = cb(key, value);
         if (result instanceof Promise) {
           result.catch((err) =>
             console.error("[stosh] Error in onChange callback:", err)

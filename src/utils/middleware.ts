@@ -1,13 +1,10 @@
-export type MiddlewareFn<T> = (
-  ctx: T,
-  next: () => Promise<void> | void
-) => Promise<void> | void;
+import { MiddlewareFn, MiddlewareContext } from "../types";
 
 export function runMiddlewareChain<T>(
   middlewares: MiddlewareFn<T>[],
-  ctx: T,
-  last: (ctx: T) => Promise<void> | void
-) {
+  ctx: MiddlewareContext<T>,
+  last: (ctx: MiddlewareContext<T>) => Promise<void> | void
+): Promise<void> | void {
   let i = -1;
   function dispatch(index: number): Promise<void> | void {
     if (index <= i) throw new Error("next() called multiple times");
@@ -21,16 +18,21 @@ export function runMiddlewareChain<T>(
 
 export function runMiddlewareChainSync<T>(
   middlewares: MiddlewareFn<T>[],
-  ctx: T,
-  last: (ctx: T) => void
-) {
+  ctx: MiddlewareContext<T>,
+  last: (ctx: MiddlewareContext<T>) => void
+): void {
   let i = -1;
   function dispatch(index: number): void {
     if (index <= i) throw new Error("next() called multiple times");
     i = index;
     const fn = middlewares[index] || last;
     if (!fn) return;
-    fn(ctx, () => dispatch(index + 1));
+    try {
+      fn(ctx, () => dispatch(index + 1));
+    } catch (err) {
+      console.error('[stosh] Middleware error:', err);
+      throw err;
+    }
   }
   dispatch(0);
 }

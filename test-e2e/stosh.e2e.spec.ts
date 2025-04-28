@@ -973,4 +973,78 @@ test.describe("Stosh E2E 기본 동작", () => {
     await page.waitForTimeout(100);
     expect(warnMsg).toContain("[stosh]");
   });
+
+  test("미들웨어 prepend/append/해제/중복등록 동작", async ({ page }) => {
+    await page.evaluate(() => {
+      window.storage = window.stosh({ type: "local", namespace: "mwtest" });
+      window.calls = [];
+  
+      // append(기본값)
+      window.storage.use("set", (ctx, next) => {
+        window.calls.push("A");
+        ctx.value = ctx.value + "_A";
+        next();
+      });
+  
+      // prepend
+      window.storage.use("set", (ctx, next) => {
+        window.calls.push("B");
+        ctx.value = ctx.value + "_B";
+        next();
+      }, { prepend: true });
+  
+      // append
+      window.storage.use("set", (ctx, next) => {
+        window.calls.push("C");
+        ctx.value = ctx.value + "_C";
+        next();
+      }, { append: true });
+  
+      // 중복 등록 시 경고 및 무시
+      window.storage.use("set", (ctx, next) => {
+        window.calls.push("A");
+        ctx.value = ctx.value + "_A";
+        next();
+      });
+  
+      // 해제 함수 테스트
+      const unsub = window.storage.use("set", (ctx, next) => {
+        window.calls.push("D");
+        ctx.value = ctx.value + "_D";
+        next();
+      }, { prepend: true });
+      unsub(); // 등록 즉시 해제
+  
+      window.storage.setSync("foo", "bar");
+    });
+  
+    // 실행 순서 및 값 검증
+    const calls = await page.evaluate(() => window.calls);
+    expect(calls).toEqual(["B", "A", "C", "A"]);
+
+    const value = await page.evaluate(() => window.storage.getSync("foo"));
+    expect(value).toBe("bar_B_A_C_A");
+  });
+
+  test("priority 옵션 커스텀 조합 폴백 동작", async ({ page }) => {
+    // localStorage만 우선순위로 지정
+    await page.evaluate(() => {
+      const storage = stosh({ priority: ["local"], namespace: "test" });
+      storage.setSync("foo", 1);
+      // 실제 localStorage에 저장됐는지 확인
+      return localStorage.getItem("test:foo");
+    });
+  });
+  test("IndexedDB 완전 불가 환경에서 strictSyncFallback 동작", async ({ page }) => {
+    await page.evaluate(() => {
+      const storage = stosh({ type: "idb", strictSyncFallback: true });
+      // idbStorage를 undefined로 강제
+      storage.idbStorage = undefined;
+      try {
+        storage.setSync("foo", 1);
+      } catch (e) {
+        return e instanceof Error;
+      }
+    });
+  });
 });

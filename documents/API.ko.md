@@ -211,29 +211,111 @@ if (stosh.isSSR) {
 
 ---
 
-## 6. 미들웨어 및 이벤트
+## 6. 미들웨어 시스템
 
 ### use(method, middleware)
 
-- `method`: 'get' | 'set' | 'remove'
-- `middleware`: `(ctx: MiddlewareContext, next: () => Promise<void> | void) => Promise<void> | void`
-- 동기/비동기 메서드에 모두 적용 됨
+- `use(method: 'get' | 'set' | 'remove', middleware, options?)`
+  - `middleware`:  
+    - 동기: `(ctx: MiddlewareContext, next: () => void) => void`  
+    - 비동기: `(ctx: MiddlewareContext, next: () => Promise<void> | void) => Promise<void> | void`
+  - `options?`: `{ prepend?: boolean; append?: boolean // default: true }`  
+- 반환값: 해제 함수(unsubscribe)
+
+__미들웨어 생성__
 
 ```ts
-storage.use("set", async (ctx, next) => {
-  ctx.value = await encryptAsync(ctx.value);
-  await next();
-});
+const storage = stosh({ type: "local" });
 
-storage.use("get", async (ctx, next) => {
-  await next();
-  if (ctx.result !== null) {
-    await someAsyncFunction(ctx.result);
-  }
-});
+const logger = (ctx, next) => {
+  console.log("set 호출", ctx);
+  next();
+};
+
+storage.use("set", logger);
 ```
 
-- `MiddlewareContext`에 포함된 `isSync`는 현재 동작이 동기 API에서 호출된 것인지, 비동기 API에서 호출된 것인지를 구분할 수 있는 플래그임
+__use() 옵션__
+
+- `prepend: true` — 미들웨어 체인의 맨 앞에 추가
+- `append: true` — (기본값) 미들웨어 체인의 맨 뒤에 추가
+
+```ts
+storage.use("set", logger, { prepend: true });
+```
+
+_미들웨어 실행 순서 비교_
+
+```ts
+const storage = stosh({ type: "local" });
+
+const mwA = (ctx, next) => { ctx.value += "_A"; next(); };
+const mwB = (ctx, next) => { ctx.value += "_B"; next(); };
+
+// append(기본값)로 등록: 등록 순서대로 실행됨
+storage.use("set", mwA); // 1번째
+storage.use("set", mwB); // 2번째
+
+storage.setSync("foo", "start");
+// 실행 순서: mwA → mwB
+// 결과: "start_A_B"
+console.log(storage.getSync("foo")); // "start_A_B"
+
+// prepend로 등록: 맨 앞에 추가됨
+const mwC = (ctx, next) => { ctx.value += "_C"; next(); };
+storage.use("set", mwC, { prepend: true }); // 항상 체인 맨 앞
+
+storage.setSync("bar", "start");
+// 실행 순서: mwC → mwA → mwB
+// 결과: "start_C_A_B"
+console.log(storage.getSync("bar")); // "start_C_A_B"
+```
+
+- `append: true`는 기본값이지만, 동적으로 미들웨어를 추가할 때 "맨 뒤에 추가"를 명확히 의도하고 싶을 때 명시적으로 사용할 수 있습니다.
+
+  ```ts
+  // 항상 마지막에 실행해야 하는 로깅 미들웨어 추가
+  storage.use("set", logger, { append: true });
+  ```
+
+__중복 등록 정책__
+
+- 동일한 함수 레퍼런스(예: 같은 변수에 담긴 함수)는 중복 등록이 방지됨
+  - 이미 등록된 함수와 같은 레퍼런스를 다시 등록하면 경고만 출력되고, 실제로는 추가되지 않음
+
+  ```ts
+  const mw = (ctx, next) => next();
+  storage.use("set", mw);
+  storage.use("set", mw); // 두 번째 등록은 무시됨
+  ```
+
+- __다른 함수(새로 선언된 함수)__ 는 내용이 같아도 중복 등록 허용
+
+  ```ts
+  storage.use("set", (ctx, next) => next());
+  storage.use("set", (ctx, next) => next()); // 둘 다 등록됨
+  ```
+
+__해제(등록 취소) 방법__
+
+- `use` 메서드는 해제 함수(unsubscribe)를 반환
+- 해제 함수를 호출하면 해당 미들웨어가 체인에서 제거됨
+
+```ts
+const mw = (ctx, next) => next();
+const unsub = storage.use("set", mw);
+unsub(); // mw 미들웨어 해제
+```
+
+__예외 및 주의사항__
+
+- 미들웨어 내에서 `next()`를 호출하지 않으면, 이후 체인이 실행되지 않음
+- 미들웨어는 동기/비동기 모두 지원하지만, 동기 메서드(setSync 등)에는 동기 미들웨어만 사용
+- 잘못된 직렬화/역직렬화 등에서 예외가 발생하면, 콘솔에 에러가 출력되고 해당 동작은 무시됨
+
+__isSync 속성__
+
+`MiddlewareContext`에 포함된 `isSync`는 현재 동작이 동기 API에서 호출된 것인지, 비동기 API에서 호출된 것인지를 구분할 수 있는 플래그임
 
 ```ts
 MiddlewareContext<T>: {
@@ -256,22 +338,33 @@ storage.use("set", async (ctx, next) => {
 });
 ```
 
-### onChange(callback)
+---
+
+## 7. onChange(callback)
 
 - 현재 인스턴스에서 set/remove/clear 등으로 값이 변경될 때 콜백 실행 (모든 스토리지타입 해당)
 - **`clear`/`clearSync` 관련 참고**: 이 메서드들은 내부적으로 삭제되는 각 키에 대해 개별적인 `remove` 이벤트를 발생시킴. 따라서 `clear` 또는 `clearSync` 호출 시, 단일 'clear' 이벤트가 아니라 각 키마다 한 번씩, 즉 여러 번 `onChange` 콜백이 실행 됨
 - 다른 탭/윈도우에서는 localStorage/sessionStorage 값이 변경될 때 콜백이 실행 (IndexedDB, Cookie 변경은 다른 탭으로 전달되지 않음)
 - 동기/비동기 콜백 모두 지원
+- 여러 콜백을 등록할 수 있으며 각각 해제 가능
 
 ```ts
 storage.onChange(async (key, value) => {
   await syncToServer(key, value);
 });
+
+// 여러 개 등록 가능
+const unsub1 = storage.onChange((key, value) => {});
+const unsub2 = storage.onChange((key, value) => {});
+
+// 각각 해제 가능
+unsub1();
+unsub2();
 ```
 
 ---
 
-## 7. 고급 기능 및 예시
+## 8. 고급 기능 및 예시
 
 ### 타입 안전성
 
@@ -315,7 +408,7 @@ setTimeout(async () => {
 
 ---
 
-## 8. 환경별 동작 및 주의사항
+## 9. 환경별 동작 및 주의사항
 
 - 모든 비동기 메서드(`set`, `get`, `remove`, `clear` 등)는 반드시 `try/catch` 또는 `.then().catch()`로 예외를 처리해야 함
 - 동기 메서드(`setSync`, `getSync` 등)는 `try/catch`로 감싸서 예외를 처리해야 함
@@ -332,7 +425,7 @@ setTimeout(async () => {
 
 ---
 
-## 9. 대표 에러 케이스
+## 10. 대표 에러 케이스
 
 - localStorage가 가득 찼을 때: `QuotaExceededError: Failed to execute 'setItem' on 'Storage': The quota has been exceeded.`
 - JSON 직렬화 불가 객체 저장 시: `TypeError: Converting circular structure to JSON`

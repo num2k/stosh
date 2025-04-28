@@ -24,6 +24,13 @@ export interface SetOptions extends CookieOptions {
 
 export interface RemoveOptions extends CookieOptions {}
 
+export interface MiddlewareOptions {
+  prepend?: boolean;
+  append?: boolean;
+}
+
+export type UnsubscribeFn = () => void;
+
 export type MiddlewareContext<T = any> = {
   key: string;
   value?: T;
@@ -32,7 +39,7 @@ export type MiddlewareContext<T = any> = {
   isSync?: boolean;
 };
 
-export type MiddlewareFn<T> = (
-  ctx: T,
+export type MiddlewareFn<T = any> = (
+  ctx: MiddlewareContext<T>,
   next: () => Promise<void> | void
 ) => Promise<void> | void;

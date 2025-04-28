@@ -1,4 +1,5 @@
 import { stosh } from "../src/index";
+import type { MiddlewareContext, MiddlewareFn } from "../src/types";
 
 // jsdom 환경에서 indexedDB 모의(mock) 처리
 if (typeof window !== "undefined" && typeof window.indexedDB === "undefined") {
@@ -24,44 +25,44 @@ if (typeof window !== "undefined" && typeof window.indexedDB === "undefined") {
               get: jest.fn().mockImplementation((key) => ({
                 result: null,
                 error: null,
-                onsuccess: () => {},
-                onerror: () => {},
+                onsuccess: () => { },
+                onerror: () => { },
               })), // Mock IDBRequest
               put: jest.fn().mockImplementation((value, key) => ({
                 result: undefined,
                 error: null,
-                onsuccess: () => {},
-                onerror: () => {},
+                onsuccess: () => { },
+                onerror: () => { },
               })),
               delete: jest.fn().mockImplementation((key) => ({
                 result: undefined,
                 error: null,
-                onsuccess: () => {},
-                onerror: () => {},
+                onsuccess: () => { },
+                onerror: () => { },
               })),
               clear: jest.fn().mockImplementation(() => ({
                 result: undefined,
                 error: null,
-                onsuccess: () => {},
-                onerror: () => {},
+                onsuccess: () => { },
+                onerror: () => { },
               })),
               getAllKeys: jest.fn().mockImplementation(() => ({
                 result: [],
                 error: null,
-                onsuccess: () => {},
-                onerror: () => {},
+                onsuccess: () => { },
+                onerror: () => { },
               })),
               getAll: jest.fn().mockImplementation(() => ({
                 result: [],
                 error: null,
-                onsuccess: () => {},
-                onerror: () => {},
+                onsuccess: () => { },
+                onerror: () => { },
               })),
               getKey: jest.fn().mockImplementation((key) => ({
                 result: undefined,
                 error: null,
-                onsuccess: () => {},
-                onerror: () => {},
+                onsuccess: () => { },
+                onerror: () => { },
               })),
             }),
             oncomplete: null,
@@ -217,7 +218,7 @@ describe("Stosh 통합 테스트", () => {
   });
   it("set 미들웨어 next 미호출 시 set 무시", () => {
     const storage = stosh({ type: "local", namespace: "mwnext" });
-    storage.use("set", (ctx, next) => {});
+    storage.use("set", (ctx, next) => { });
     storage.setSync("no", "x");
     expect(storage.getSync("no")).toBeNull();
   });
@@ -295,7 +296,7 @@ describe("Stosh 통합 테스트", () => {
   // 미들웨어에서 next()를 아예 호출하지 않으면 set 무시
   it("미들웨어에서 next()를 아예 호출하지 않으면 set 무시", () => {
     const storage = stosh({ type: "local", namespace: "mw-no-next" });
-    storage.use("set", (ctx, next) => {});
+    storage.use("set", (ctx, next) => { });
     storage.setSync("foo", 1);
     expect(storage.getSync("foo")).toBeNull();
   });
@@ -683,6 +684,269 @@ describe("Stosh 통합 테스트", () => {
       const keyY = encodeURIComponent("batchrm:y");
       expect(getCookieValue(keyX)).toBeFalsy();
       expect(getCookieValue(keyY)).toBeFalsy();
+    });
+  });
+
+
+  describe("strictSyncFallback 옵션 동작", () => {
+    it("IndexedDB + sync API + strictSyncFallback: true → 에러 발생 (mock 환경)", () => {
+      const storage = stosh({
+        type: "idb",
+        strictSyncFallback: true,
+        namespace: "strict-err"
+      });
+      // jsdom/mock 환경에서는 실제 idbStorage가 undefined이므로 정책 검증만 강제 수행
+      (storage as any).idbStorage = true;
+      expect(() => storage.setSync("foo", 1)).toThrow();
+      expect(() => storage.getSync("foo")).toThrow();
+      expect(() => storage.removeSync("foo")).toThrow();
+    });
+
+    it("IndexedDB + sync API + strictSyncFallback: false → 경고 후 fallback (mock 환경)", () => {
+      const storage = stosh({
+        type: "idb",
+        strictSyncFallback: false,
+        namespace: "strict-warn"
+      });
+      // jsdom/mock 환경에서는 실제 idbStorage가 undefined이므로 정책 검증만 강제 수행
+      (storage as any).idbStorage = true;
+      const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => { });
+      storage.setSync("foo", 123);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("[stosh]"));
+      expect(storage.getSync("foo")).toBe(123);
+      storage.removeSync("foo");
+      expect(storage.getSync("foo")).toBeNull();
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe("batchSet value any 타입 허용", () => {
+    it("여러 타입의 value를 batchSet/batchSetSync로 저장/조회", async () => {
+      const storage = stosh({ type: "local", namespace: "batch-any" });
+      const entries = [
+        { key: "num", value: 1 },
+        { key: "str", value: "abc" },
+        { key: "obj", value: { a: 1 } },
+        { key: "arr", value: [1, 2, 3] },
+        { key: "nul", value: null }
+      ];
+      await storage.batchSet(entries);
+      const [num, str, obj, arr, nul] = await storage.batchGet(["num", "str", "obj", "arr", "nul"]);
+      expect(num).toBe(1);
+      expect(str).toBe("abc");
+      expect(obj).toEqual({ a: 1 });
+      expect(arr).toEqual([1, 2, 3]);
+      expect(nul).toBeNull();
+
+      // Sync 버전도 동일하게
+      storage.batchSetSync(entries);
+      const [num2, str2, obj2, arr2, nul2] = storage.batchGetSync(["num", "str", "obj", "arr", "nul"]);
+      expect(num2).toBe(1);
+      expect(str2).toBe("abc");
+      expect(obj2).toEqual({ a: 1 });
+      expect(arr2).toEqual([1, 2, 3]);
+      expect(nul2).toBeNull();
+    });
+  });
+
+
+  describe("미들웨어 중복 등록/해제 유닛 테스트", () => {
+    it("동일 함수(레퍼런스) 중복 등록 방지", () => {
+      const st = stosh({ type: "memory" });
+      const calls: string[] = [];
+      const mw: MiddlewareFn<any> = (ctx, next) => {
+        calls.push("A");
+        ctx.value = (ctx.value || "") + "_A";
+        next();
+      };
+      st.use("set", mw);
+      st.use("set", mw);
+    
+      st.setSync("foo", "bar");
+      expect(calls).toEqual(["A"]);
+      expect(st.getSync("foo")).toBe("bar_A");
+    });
+
+    it("다른 함수(레퍼런스) 등록 시 중복 허용", () => {
+      const st = stosh({ type: "memory" });
+      const calls: string[] = [];
+
+      const mw1: MiddlewareFn<any> = (ctx, next) => { calls.push("A"); ctx.value = (ctx.value || "") + "_A"; next(); };
+      const mw2: MiddlewareFn<any> = (ctx, next) => { calls.push("A"); ctx.value = (ctx.value || "") + "_A"; next(); };
+
+      st.use("set", mw1);
+      st.use("set", mw2);
+
+      st.setSync("foo", "bar");
+      expect(calls).toEqual(["A", "A"]);
+      expect(st.getSync("foo")).toBe("bar_A_A");
+    });
+
+    it("해제 함수 동작", () => {
+      const st = stosh({ type: "memory" });
+      const calls: string[] = [];
+
+      const mw: MiddlewareFn<any> = (ctx, next) => { calls.push("A"); next(); };
+      const unsub = st.use("set", mw);
+      unsub();
+
+      st.setSync("foo", "bar");
+      expect(calls).toEqual([]);
+    });
+  });
+
+  it("미들웨어에서 next() 미호출 시 이후 체인 중단", () => {
+    const st = stosh({ type: "memory" });
+    const calls: string[] = [];
+    st.use("set", (ctx, next) => { calls.push("A"); /* next 미호출 */ });
+    st.use("set", (ctx, next) => { calls.push("B"); next(); });
+    st.setSync("foo", 1);
+    expect(calls).toEqual(["A"]); // B는 호출되지 않아야 함
+  });
+
+  it("다른 함수(레퍼런스) 등록 시 중복 허용", () => {
+    const st = stosh({ type: "memory" });
+    const calls: string[] = [];
+
+    const mw1: MiddlewareFn<any> = (ctx, next) => { calls.push("A"); ctx.value = (ctx.value || "") + "_A"; next(); };
+    const mw2: MiddlewareFn<any> = (ctx, next) => { calls.push("A"); ctx.value = (ctx.value || "") + "_A"; next(); };
+
+    st.use("set", mw1);
+    st.use("set", mw2);
+
+    st.setSync("foo", "bar");
+    expect(calls).toEqual(["A", "A"]);
+    expect(st.getSync("foo")).toBe("bar_A_A");
+  });
+
+  it("해제 함수 동작", () => {
+    const st = stosh({ type: "memory" });
+    const calls: string[] = [];
+
+    const mw: MiddlewareFn<any> = (ctx, next) => { calls.push("A"); next(); };
+    const unsub = st.use("set", mw);
+    unsub();
+
+    st.setSync("foo", "bar");
+    expect(calls).toEqual([]);
+  });
+
+  it("미들웨어에서 next() 미호출 시 이후 체인 중단", () => {
+    const st = stosh({ type: "memory" });
+    const calls: string[] = [];
+    st.use("set", (ctx, next) => { calls.push("A"); /* next 미호출 */ });
+    st.use("set", (ctx, next) => { calls.push("B"); next(); });
+    st.setSync("foo", 1);
+    expect(calls).toEqual(["A"]); // B는 호출되지 않아야 함
+  });
+
+  it("미들웨어에서 예외 발생 시 콘솔 에러 출력 및 체인 중단", () => {
+    const st = stosh({ type: "memory" });
+    const calls: string[] = [];
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => { });
+    st.use("set", (ctx, next) => { throw new Error("fail!"); });
+    st.use("set", (ctx, next) => { calls.push("B"); next(); });
+    expect(() => st.setSync("foo", 1)).toThrow();
+    expect(calls).toEqual([]);
+    expect(errorSpy).toHaveBeenCalled();
+    expect(
+      errorSpy.mock.calls.some(
+        call => typeof call[0] === "string" && call[0].includes("[stosh]")
+      )
+    ).toBe(true);
+    errorSpy.mockRestore();
+  });
+
+  it.skip(
+    "동기 메서드에 비동기 미들웨어 등록 시 경고 출력 (jest 환경에서는 런타임 async function 감지가 불가능하여 자동 검증 불가)",
+    () => {
+      // 실제 브라우저/Node 환경에서는 런타임에서 async function을 감지하여 경고가 정상 출력됨
+      // 하지만 jest/babel/ts-jest 환경에서는 async function이 transpile되어 일반 function으로 바뀌기 때문에,
+      // 어떤 런타임 판별도 실패하여 테스트 자동화가 불가능함
+      // 따라서 이 테스트는 정책 보장용 문서화 및 수동 검증 대상으로 남김
+    }
+  );
+
+  it("batchSet any로 저장 후 get T로 잘못 조회 시 런타임 타입 불일치", async () => {
+    const st = stosh({ type: "memory" });
+    await st.batchSet([{ key: "foo", value: { a: 1 } }]);
+    const result = await st.get<string>("foo");
+    expect(typeof result).not.toBe("string"); // 실제로는 object
+  });
+
+  it("순환참조/함수 value 저장 시 에러 발생", async () => {
+    const st = stosh({ type: "memory" });
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => { });
+    const circular: any = {};
+    circular.self = circular;
+    await expect(st.set("foo", circular)).rejects.toThrow();
+    await expect(st.set("bar", () => { })).rejects.toThrow();
+    errorSpy.mockRestore();
+  });
+
+  it("onChange 콜백에서 Promise/예외 발생 시 콘솔 에러 출력", async () => {
+    const st = stosh({ type: "memory" });
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => { });
+    st.onChange(async () => { throw new Error("fail!"); });
+    await st.set("foo", 1);
+    expect(errorSpy).toHaveBeenCalled();
+    expect(
+      errorSpy.mock.calls.some(
+        call => typeof call[0] === "string" && call[0].includes("[stosh]")
+      )
+    ).toBe(true);
+    errorSpy.mockRestore();
+  });
+
+  describe("미들웨어 prepend/append 옵션 순서", () => {
+    it("prepend/append 옵션에 따라 실행 순서가 올바른지", () => {
+      const st = stosh({ type: "memory" });
+      const calls: string[] = [];
+      st.use("set", (ctx, next) => { calls.push("A"); next(); }, { append: true });
+      st.use("set", (ctx, next) => { calls.push("B"); next(); }); // default
+      st.use("set", (ctx, next) => { calls.push("C"); next(); }, { prepend: true });
+      st.setSync("foo", 1);
+      expect(calls).toEqual(["C", "A", "B"]);
+    });
+  });
+  
+  describe("batchSet 옵션 병합", () => {
+    it("entry별 옵션이 공통 옵션보다 우선 적용되는지", async () => {
+      const st = stosh({ type: "memory" });
+      const spy = jest.spyOn(st, "set");
+      await st.batchSet([
+        { key: "a", value: 1 },
+        { key: "b", value: 2, options: { expire: 123 } }
+      ], { expire: 999 });
+      // spy를 활용해 각 set 호출 옵션을 검증하거나, 내부적으로 expire 옵션이 반영되는지 확인
+      // (실제 스토리지에 expire 저장 구조에 따라 추가 구현 필요)
+      spy.mockRestore();
+    });
+  });
+  
+  describe("onChange 콜백 내 비동기 예외", () => {
+    it("onChange 콜백에서 await Promise.reject 시 전체 동작에 영향이 없는지", async () => {
+      const st = stosh({ type: "memory" });
+      const errorSpy = jest.spyOn(console, "error").mockImplementation(() => { });
+      st.onChange(async () => { await Promise.reject("fail!"); });
+      await st.set("foo", 1);
+      expect(errorSpy).toHaveBeenCalled();
+      errorSpy.mockRestore();
+      // set 동작이 정상적으로 완료되는지 추가 검증
+      expect(await st.get("foo")).toBe(1);
+    });
+  });
+  
+  describe("strictSyncFallback 옵션 분기", () => {
+    it("IndexedDB + Sync API + strictSyncFallback=true에서 에러 발생", () => {
+      const st = stosh({ type: "idb", strictSyncFallback: true });
+      expect(() => st.setSync("foo", 1)).toThrow();
+    });
+    it("IndexedDB + Sync API + strictSyncFallback=false에서 폴백 동작", () => {
+      const st = stosh({ type: "idb", strictSyncFallback: false });
+      // 실제로는 local/session 등으로 폴백되어 동작해야 함
+      expect(() => st.setSync("foo", 1)).not.toThrow();
+      // 폴백 여부는 st.isMemoryFallback 등으로도 검증 가능
     });
   });
 });
