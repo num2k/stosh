@@ -4,6 +4,7 @@ import {
   MiddlewareContext,
   RemoveOptions,
   MiddlewareFn,
+  MiddlewareEntry,
   StoredData,
   MiddlewareOptions,
   UnsubscribeFn,
@@ -43,7 +44,7 @@ export class Stosh<T = any> {
   private readonly serializeFn: (data: StoredData<T>) => string;
   private readonly deserializeFn: (raw: string) => StoredData<T>;
   private readonly strictSyncFallback: boolean;
-  private readonly middleware: Record<MiddlewareMethod, MiddlewareFn<T>[]> = {
+  private readonly middleware: Record<MiddlewareMethod, MiddlewareEntry<T>[]> = {
     get: [],
     set: [],
     remove: [],
@@ -192,9 +193,9 @@ export class Stosh<T = any> {
   ): UnsubscribeFn {
     const chain = this.middleware[method];
     // Prevent duplicate registration
-    if (chain.includes(mw)) {
+    if (chain.some((entry) => entry.fn === mw)) {
       console.warn("[stosh] The same middleware has already been registered.");
-      return () => { };
+      return () => {};
     }
 
     // Synchronous method with asynchronous middleware registration warning
@@ -203,23 +204,22 @@ export class Stosh<T = any> {
     if (syncMethods.includes(method) && isAsync) {
       warnIfAsyncMiddleware.call(this, method);
     }
+    const entry: MiddlewareEntry<T> = { fn: mw, options };
     if (options?.prepend) {
-      chain.unshift(mw);
-      (mw as any)._prepend = true;
+      chain.unshift(entry);
     } else if (options?.append) {
-      (mw as any)._append = true;
-      chain.push(mw);
+      chain.push(entry);
     } else {
-      const firstAppendIdx = chain.findIndex(fn => (fn as any)._append === true);
+      const firstAppendIdx = chain.findIndex(e => e.options?.append);
       if (firstAppendIdx === -1) {
-        chain.push(mw);
+        chain.push(entry);
       } else {
-        chain.splice(firstAppendIdx, 0, mw);
+        chain.splice(firstAppendIdx, 0, entry);
       }
     }
 
     return () => {
-      const idx = chain.indexOf(mw);
+      const idx = chain.findIndex(e => e.fn === mw);
       if (idx >= 0) chain.splice(idx, 1);
     };
   }
@@ -230,7 +230,8 @@ export class Stosh<T = any> {
     last: (ctx: MiddlewareContext<T>) => Promise<void> | void
   ) {
     ctx.isSync = false;
-    await runMiddlewareChain(this.middleware[method], ctx, last);
+    const chain = this.middleware[method].map(entry => entry.fn);
+    await runMiddlewareChain(chain, ctx, last);
   }
 
   private runMiddlewareSync(
@@ -239,7 +240,8 @@ export class Stosh<T = any> {
     last: (ctx: MiddlewareContext<T>) => void
   ) {
     ctx.isSync = true;
-    runMiddlewareChainSync(this.middleware[method], ctx, last);
+    const chain = this.middleware[method].map(entry => entry.fn);
+    runMiddlewareChainSync(chain, ctx, last);
   }
 
   private async _getInternal<U = T>(key: string): Promise<U | null> {

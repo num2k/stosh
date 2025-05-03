@@ -43,3 +43,8 @@ export type MiddlewareFn<T = any> = (
   ctx: MiddlewareContext<T>,
   next: () => Promise<void> | void
 ) => Promise<void> | void;
+
+export type MiddlewareEntry<T = any> = {
+  fn: MiddlewareFn<T>;
+  options?: MiddlewareOptions;
+};
