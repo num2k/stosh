@@ -38,18 +38,18 @@ import { checkSyncAvailable } from "./utils/syncAvailableCheck";
  * Stosh: Middleware-based storage wrapper
  */
 export class Stosh<T = any> {
-  private storage: Storage;
-  private namespace: string;
-  private serializeFn: (data: StoredData<T>) => string;
-  private deserializeFn: (raw: string) => StoredData<T>;
-  private strictSyncFallback: boolean;
-  private middleware: Record<MiddlewareMethod, MiddlewareFn<T>[]> = {
+  private readonly storage: Storage;
+  private readonly namespace: string;
+  private readonly serializeFn: (data: StoredData<T>) => string;
+  private readonly deserializeFn: (raw: string) => StoredData<T>;
+  private readonly strictSyncFallback: boolean;
+  private readonly middleware: Record<MiddlewareMethod, MiddlewareFn<T>[]> = {
     get: [],
     set: [],
     remove: [],
   };
   private onChangeCbs: Array<(key: string, value: T | null) => void | Promise<void>> = [];
-  private idbStorage?: IndexedDBStorage;
+  private readonly idbStorage?: IndexedDBStorage;
   /** Indicates if memory fallback is active */
   readonly isMemoryFallback: boolean;
   /** Indicates if running in SSR environment */
@@ -139,7 +139,6 @@ export class Stosh<T = any> {
         }
       } catch {
         storage = null;
-        continue;
       }
     }
 
@@ -206,9 +205,19 @@ export class Stosh<T = any> {
     }
     if (options?.prepend) {
       chain.unshift(mw);
-    } else {
+      (mw as any)._prepend = true;
+    } else if (options?.append) {
+      (mw as any)._append = true;
       chain.push(mw);
+    } else {
+      const firstAppendIdx = chain.findIndex(fn => (fn as any)._append === true);
+      if (firstAppendIdx === -1) {
+        chain.push(mw);
+      } else {
+        chain.splice(firstAppendIdx, 0, mw);
+      }
     }
+
     return () => {
       const idx = chain.indexOf(mw);
       if (idx >= 0) chain.splice(idx, 1);
@@ -314,10 +323,11 @@ export class Stosh<T = any> {
   }
 
   private serializeData(value: T, options?: SetOptions) {
-    return this.serializeFn({
-      v: value,
-      e: options?.expire ? Date.now() + options.expire : undefined
-    });
+    const data: StoredData<T> = { v: value };
+    if (options?.expire) {
+      data.e = Date.now() + options.expire;
+    }
+    return this.serializeFn(data);
   }
 
   private async _setInternal(

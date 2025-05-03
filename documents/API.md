@@ -237,6 +237,9 @@ storage.use("set", logger);
 
 __use() options__
 
+- `prepend: true` — Registers the middleware to be executed at the very beginning of the chain. If multiple `prepend` middlewares are registered, the ones declared later will actually run first (LIFO, stack order).
+- `append: true` — Always adds the middleware to the very end of the chain, regardless of when it is registered.
+
 ```ts
 storage.use("set", logger, { prepend: true });
 ```
@@ -249,7 +252,7 @@ const storage = stosh({ type: "local" });
 const mwA = (ctx, next) => { ctx.value += "_A"; next(); };
 const mwB = (ctx, next) => { ctx.value += "_B"; next(); };
 
-// Registered with append (default): executed in registration order
+// If no option is specified, middleware is executed in the order of registration.
 storage.use("set", mwA); // 1st
 storage.use("set", mwB); // 2nd
 
@@ -268,11 +271,24 @@ storage.setSync("bar", "start");
 console.log(storage.getSync("bar")); // "start_C_A_B"
 ```
 
-- `append: true` is the default, but you can specify it explicitly when you want to make it clear that the middleware should be added to the end of the chain (e.g., for dynamic or conditional middleware registration).
+- `append: true` ensures that the middleware will always execute last in the chain, no matter when it is registered.
 
   ```ts
-  // Always add logging middleware at the end
-  storage.use("set", logger, { append: true });
+  // mw2 will always execute last, regardless of registration order
+  storage.use("set", mw1);                    // [mw1]
+  storage.use("set", mw2, { append: true });  // [mw1, mw2]
+  storage.use("set", mw3, { prepend: true }); // [mw3, mw1, mw2]
+  storage.use("set", mw4);                    // [mw3, mw1, mw4, mw2]
+  ```
+
+- If multiple middlewares are registered with `append: true`, they are executed in the order they were registered, with the last `append` middleware always being executed last.
+
+  ```ts
+  storage.use("set", mw1);                          // [mw1]
+  storage.use("set", mw2, { append: true });        // [mw1, mw2]
+  storage.use("set", mw3, { append: true });        // [mw1, mw2, mw3]
+  storage.use("set", mw4);                          // [mw1, mw4, mw2, mw3]
+  storage.use("set", mw5, { append: true });        // [mw1, mw4, mw2, mw3, mw5]
   ```
 
 __Duplicate Registration Policy__

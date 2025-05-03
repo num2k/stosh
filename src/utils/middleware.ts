@@ -11,7 +11,16 @@ export function runMiddlewareChain<T>(
     i = index;
     const fn = middlewares[index] || last;
     if (!fn) return;
-    return Promise.resolve(fn(ctx, () => dispatch(index + 1)));
+    try {
+      return Promise.resolve(fn(ctx, () => dispatch(index + 1)))
+          .catch(err => {
+            console.error('[stosh] Middleware error:', err);
+            throw err;
+          });
+    } catch (err) {
+      console.error('[stosh] Middleware error:', err);
+      throw err;
+    }
   }
   return dispatch(0);
 }

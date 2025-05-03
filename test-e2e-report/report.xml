@@ -1,84 +1,84 @@
-<testsuites id="" name="" tests="40" failures="0" skipped="0" errors="0" time="7.03467">
-<testsuite name="stosh.e2e.spec.ts" timestamp="2025-04-28T00:25:37.038Z" hostname="" tests="40" failures="0" skipped="0" time="4.139" errors="0">
-<testcase name="Stosh E2E 기본 동작 › localStorage set/get/remove/has 동작" classname="stosh.e2e.spec.ts" time="0.134">
+<testsuites id="" name="" tests="40" failures="0" skipped="0" errors="0" time="5.660281">
+<testsuite name="stosh.e2e.spec.ts" timestamp="2025-05-03T01:23:50.169Z" hostname="" tests="40" failures="0" skipped="0" time="3.63" errors="0">
+<testcase name="Stosh E2E 기본 동작 › localStorage set/get/remove/has 동작" classname="stosh.e2e.spec.ts" time="0.108">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 만료(expire) 옵션 동작" classname="stosh.e2e.spec.ts" time="0.095">
+<testcase name="Stosh E2E 기본 동작 › 만료(expire) 옵션 동작" classname="stosh.e2e.spec.ts" time="0.081">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 동기/비동기 set/get/remove/has/clear 동작" classname="stosh.e2e.spec.ts" time="0.072">
+<testcase name="Stosh E2E 기본 동작 › 동기/비동기 set/get/remove/has/clear 동작" classname="stosh.e2e.spec.ts" time="0.071">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 네임스페이스 격리" classname="stosh.e2e.spec.ts" time="0.057">
+<testcase name="Stosh E2E 기본 동작 › 네임스페이스 격리" classname="stosh.e2e.spec.ts" time="0.052">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › batchSet/batchGet/batchRemove 동작" classname="stosh.e2e.spec.ts" time="0.06">
+<testcase name="Stosh E2E 기본 동작 › batchSet/batchGet/batchRemove 동작" classname="stosh.e2e.spec.ts" time="0.054">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 미들웨어 동작" classname="stosh.e2e.spec.ts" time="0.058">
+<testcase name="Stosh E2E 기본 동작 › 미들웨어 동작" classname="stosh.e2e.spec.ts" time="0.048">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 커스텀 직렬화/역직렬화 동작" classname="stosh.e2e.spec.ts" time="0.063">
+<testcase name="Stosh E2E 기본 동작 › 커스텀 직렬화/역직렬화 동작" classname="stosh.e2e.spec.ts" time="0.056">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › falsy 값 저장/조회/삭제" classname="stosh.e2e.spec.ts" time="0.076">
+<testcase name="Stosh E2E 기본 동작 › falsy 값 저장/조회/삭제" classname="stosh.e2e.spec.ts" time="0.065">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 지원하지 않는 storage type 예외" classname="stosh.e2e.spec.ts" time="0.067">
+<testcase name="Stosh E2E 기본 동작 › 지원하지 않는 storage type 예외" classname="stosh.e2e.spec.ts" time="0.044">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › onChange 콜백 동작 (storage 이벤트, 멀티탭)" classname="stosh.e2e.spec.ts" time="0.235">
+<testcase name="Stosh E2E 기본 동작 › onChange 콜백 동작 (storage 이벤트, 멀티탭)" classname="stosh.e2e.spec.ts" time="0.217">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › getAll 동작" classname="stosh.e2e.spec.ts" time="0.057">
+<testcase name="Stosh E2E 기본 동작 › getAll 동작" classname="stosh.e2e.spec.ts" time="0.052">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 쿠키 스토리지 set/get/remove 동작" classname="stosh.e2e.spec.ts" time="0.06">
+<testcase name="Stosh E2E 기본 동작 › 쿠키 스토리지 set/get/remove 동작" classname="stosh.e2e.spec.ts" time="0.044">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › priority 옵션에 따라 local → session → cookie → memory 순으로 폴백" classname="stosh.e2e.spec.ts" time="0.056">
+<testcase name="Stosh E2E 기본 동작 › priority 옵션에 따라 local → session → cookie → memory 순으로 폴백" classname="stosh.e2e.spec.ts" time="0.049">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › priority 옵션에 따라 sessionStorage 우선 사용" classname="stosh.e2e.spec.ts" time="0.056">
+<testcase name="Stosh E2E 기본 동작 › priority 옵션에 따라 sessionStorage 우선 사용" classname="stosh.e2e.spec.ts" time="0.045">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › localStorage 용량 초과 시 예외 발생" classname="stosh.e2e.spec.ts" time="0.077">
+<testcase name="Stosh E2E 기본 동작 › localStorage 용량 초과 시 예외 발생" classname="stosh.e2e.spec.ts" time="0.063">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 여러 탭에서 동시에 set/remove 시 onChange 콜백 일관성" classname="stosh.e2e.spec.ts" time="0.237">
+<testcase name="Stosh E2E 기본 동작 › 여러 탭에서 동시에 set/remove 시 onChange 콜백 일관성" classname="stosh.e2e.spec.ts" time="0.217">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › StorageEvent의 key/newValue/oldValue 등 필드 검증" classname="stosh.e2e.spec.ts" time="0.243">
+<testcase name="Stosh E2E 기본 동작 › StorageEvent의 key/newValue/oldValue 등 필드 검증" classname="stosh.e2e.spec.ts" time="0.23">
 </testcase>
 <testcase name="Stosh E2E 기본 동작 › idb 타입 비동기 동작 및 batch/만료/네임스페이스/미들웨어" classname="stosh.e2e.spec.ts" time="0.09">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 쿠키 만료, path, 도메인 옵션, 용량 초과" classname="stosh.e2e.spec.ts" time="0.094">
+<testcase name="Stosh E2E 기본 동작 › 쿠키 만료, path, 도메인 옵션, 용량 초과" classname="stosh.e2e.spec.ts" time="0.092">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 매우 긴 키/값, 특수문자, 이모지 등 저장/조회(브라우저 환경)" classname="stosh.e2e.spec.ts" time="0.056">
+<testcase name="Stosh E2E 기본 동작 › 매우 긴 키/값, 특수문자, 이모지 등 저장/조회(브라우저 환경)" classname="stosh.e2e.spec.ts" time="0.052">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › batch API와 일반 API 혼합 사용 시 일관성" classname="stosh.e2e.spec.ts" time="0.058">
+<testcase name="Stosh E2E 기본 동작 › batch API와 일반 API 혼합 사용 시 일관성" classname="stosh.e2e.spec.ts" time="0.049">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › StorageEvent oldValue/newValue 필드 정확성" classname="stosh.e2e.spec.ts" time="0.238">
+<testcase name="Stosh E2E 기본 동작 › StorageEvent oldValue/newValue 필드 정확성" classname="stosh.e2e.spec.ts" time="0.226">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › onChange 콜백 내에서 비동기 작업/예외 발생 시 전체 동작 영향 없음" classname="stosh.e2e.spec.ts" time="0.122">
+<testcase name="Stosh E2E 기본 동작 › onChange 콜백 내에서 비동기 작업/예외 발생 시 전체 동작 영향 없음" classname="stosh.e2e.spec.ts" time="0.108">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › batchSet/batchRemove 중 일부 실패 시 일관성" classname="stosh.e2e.spec.ts" time="0.069">
+<testcase name="Stosh E2E 기본 동작 › batchSet/batchRemove 중 일부 실패 시 일관성" classname="stosh.e2e.spec.ts" time="0.054">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 여러 인스턴스에서 메모리 스토리지 데이터 격리" classname="stosh.e2e.spec.ts" time="0.06">
+<testcase name="Stosh E2E 기본 동작 › 여러 인스턴스에서 메모리 스토리지 데이터 격리" classname="stosh.e2e.spec.ts" time="0.046">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 동시성/경합 상황: 여러 탭에서 거의 동시에 set/remove 시 onChange 콜백 일관성" classname="stosh.e2e.spec.ts" time="0.253">
+<testcase name="Stosh E2E 기본 동작 › 동시성/경합 상황: 여러 탭에서 거의 동시에 set/remove 시 onChange 콜백 일관성" classname="stosh.e2e.spec.ts" time="0.227">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › IndexedDB 비동기 에러 처리: DB 오픈 실패 시 폴백 동작" classname="stosh.e2e.spec.ts" time="0.06">
+<testcase name="Stosh E2E 기본 동작 › IndexedDB 비동기 에러 처리: DB 오픈 실패 시 폴백 동작" classname="stosh.e2e.spec.ts" time="0.043">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 메모리 스토리지: 새로고침 후 데이터 소실 확인" classname="stosh.e2e.spec.ts" time="0.065">
+<testcase name="Stosh E2E 기본 동작 › 메모리 스토리지: 새로고침 후 데이터 소실 확인" classname="stosh.e2e.spec.ts" time="0.05">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › sessionStorage 탭 격리 동작" classname="stosh.e2e.spec.ts" time="0.147">
+<testcase name="Stosh E2E 기본 동작 › sessionStorage 탭 격리 동작" classname="stosh.e2e.spec.ts" time="0.104">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › IndexedDB clear/has/getAll 동작" classname="stosh.e2e.spec.ts" time="0.069">
+<testcase name="Stosh E2E 기본 동작 › IndexedDB clear/has/getAll 동작" classname="stosh.e2e.spec.ts" time="0.054">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › IDB 사용 시 동기 API 호출 시 폴백 저장소(localStorage) 사용" classname="stosh.e2e.spec.ts" time="0.063">
+<testcase name="Stosh E2E 기본 동작 › IDB 사용 시 동기 API 호출 시 폴백 저장소(localStorage) 사용" classname="stosh.e2e.spec.ts" time="0.047">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › onChange: IDB/Cookie/Memory 변경 시 다른 탭으로 전파 안 됨" classname="stosh.e2e.spec.ts" time="0.242">
+<testcase name="Stosh E2E 기본 동작 › onChange: IDB/Cookie/Memory 변경 시 다른 탭으로 전파 안 됨" classname="stosh.e2e.spec.ts" time="0.223">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › E2E 폴백: localStorage 비활성화 시 sessionStorage 사용" classname="stosh.e2e.spec.ts" time="0.105">
+<testcase name="Stosh E2E 기본 동작 › E2E 폴백: localStorage 비활성화 시 sessionStorage 사용" classname="stosh.e2e.spec.ts" time="0.087">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 비동기 미들웨어 동작 (IDB)" classname="stosh.e2e.spec.ts" time="0.083">
+<testcase name="Stosh E2E 기본 동작 › 비동기 미들웨어 동작 (IDB)" classname="stosh.e2e.spec.ts" time="0.069">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › Stosh strictSyncFallback 정책 (IndexedDB) › IndexedDB + sync API + strictSyncFallback: true → 에러 발생" classname="stosh.e2e.spec.ts" time="0.065">
+<testcase name="Stosh E2E 기본 동작 › Stosh strictSyncFallback 정책 (IndexedDB) › IndexedDB + sync API + strictSyncFallback: true → 에러 발생" classname="stosh.e2e.spec.ts" time="0.052">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › Stosh strictSyncFallback 정책 (IndexedDB) › IndexedDB + sync API + strictSyncFallback: false → 경고 후 fallback" classname="stosh.e2e.spec.ts" time="0.173">
+<testcase name="Stosh E2E 기본 동작 › Stosh strictSyncFallback 정책 (IndexedDB) › IndexedDB + sync API + strictSyncFallback: false → 경고 후 fallback" classname="stosh.e2e.spec.ts" time="0.159">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › IndexedDB + sync API + strictSyncFallback 미지정(기본값) → 경고 후 fallback" classname="stosh.e2e.spec.ts" time="0.169">
+<testcase name="Stosh E2E 기본 동작 › IndexedDB + sync API + strictSyncFallback 미지정(기본값) → 경고 후 fallback" classname="stosh.e2e.spec.ts" time="0.162">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › 미들웨어 prepend/append/해제/중복등록 동작" classname="stosh.e2e.spec.ts" time="0.054">
+<testcase name="Stosh E2E 기본 동작 › 미들웨어 prepend/append/해제/중복등록 동작" classname="stosh.e2e.spec.ts" time="0.052">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › priority 옵션 커스텀 조합 폴백 동작" classname="stosh.e2e.spec.ts" time="0.051">
+<testcase name="Stosh E2E 기본 동작 › priority 옵션 커스텀 조합 폴백 동작" classname="stosh.e2e.spec.ts" time="0.045">
 </testcase>
-<testcase name="Stosh E2E 기본 동작 › IndexedDB 완전 불가 환경에서 strictSyncFallback 동작" classname="stosh.e2e.spec.ts" time="0.05">
+<testcase name="Stosh E2E 기본 동작 › IndexedDB 완전 불가 환경에서 strictSyncFallback 동작" classname="stosh.e2e.spec.ts" time="0.043">
 </testcase>
 </testsuite>
 </testsuites>

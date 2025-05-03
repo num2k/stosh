@@ -902,11 +902,22 @@ describe("Stosh 통합 테스트", () => {
     it("prepend/append 옵션에 따라 실행 순서가 올바른지", () => {
       const st = stosh({ type: "memory" });
       const calls: string[] = [];
+
+      function mw(ctx: any, next: any) {
+        calls.push("G");
+        next();
+      }
+      
       st.use("set", (ctx, next) => { calls.push("A"); next(); }, { append: true });
       st.use("set", (ctx, next) => { calls.push("B"); next(); }); // default
-      st.use("set", (ctx, next) => { calls.push("C"); next(); }, { prepend: true });
+      st.use("set", (ctx, next) => { calls.push("C"); next(); }, { append: true });
+      st.use("set", (ctx, next) => { calls.push("D"); next(); }); // default
+      st.use("set", mw);
+      st.use("set", mw); // 두 번째 등록은 무시됨
+      st.use("set", (ctx, next) => { calls.push("E"); next(); }, { prepend: true });
+      st.use("set", (ctx, next) => { calls.push("F"); next(); }, { prepend: true });
       st.setSync("foo", 1);
-      expect(calls).toEqual(["C", "A", "B"]);
+      expect(calls).toEqual(["F", "E", "B", "D", "G", "A", "C"]);
     });
   });
   

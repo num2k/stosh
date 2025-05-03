@@ -237,8 +237,8 @@ storage.use("set", logger);
 
 __use() 옵션__
 
-- `prepend: true` — 미들웨어 체인의 맨 앞에 추가
-- `append: true` — (기본값) 미들웨어 체인의 맨 뒤에 추가
+- `prepend: true`: 미들웨어를 체인 맨 앞(가장 먼저) 실행되도록 등록합니다. 여러개의 `prepend` 미들웨어가 등록된 경우, **뒤에 선언할수록 실제로 더 앞에 실행됩니다(LIFO, 스택 방식)**.
+- `append: true`: 언제 등록하든 항상 미들웨어 체인의 맨 마지막에 추가됨
 
 ```ts
 storage.use("set", logger, { prepend: true });
@@ -252,7 +252,7 @@ const storage = stosh({ type: "local" });
 const mwA = (ctx, next) => { ctx.value += "_A"; next(); };
 const mwB = (ctx, next) => { ctx.value += "_B"; next(); };
 
-// append(기본값)로 등록: 등록 순서대로 실행됨
+// 옵션 없이 등록: 등록 순서대로 실행됨
 storage.use("set", mwA); // 1번째
 storage.use("set", mwB); // 2번째
 
@@ -271,11 +271,24 @@ storage.setSync("bar", "start");
 console.log(storage.getSync("bar")); // "start_C_A_B"
 ```
 
-- `append: true`는 기본값이지만, 동적으로 미들웨어를 추가할 때 "맨 뒤에 추가"를 명확히 의도하고 싶을 때 명시적으로 사용할 수 있습니다.
+- `append: true`는 언제 선언하든 항상 미들웨어 체인의 맨 마지막에 실행됨
 
   ```ts
-  // 항상 마지막에 실행해야 하는 로깅 미들웨어 추가
-  storage.use("set", logger, { append: true });
+  // mw2는 언제 등록하든 항상 마지막에 실행됨
+  storage.use("set", mw1);                    // [mw1]
+  storage.use("set", mw2, { append: true });  // [mw1, mw2]
+  storage.use("set", mw3, { prepend: true }); // [mw3, mw1, mw2]
+  storage.use("set", mw4);                    // [mw3, mw1, mw4, mw2]
+  ```
+
+- 여러 개의 `append` 미들웨어가 있을 때는 `append` 옵션이 선언된 순서대로 실행되고, 가장 마지막에 `append`로 등록한 미들웨어가 마지막에 실행됨
+
+  ```ts
+  storage.use("set", mw1);                          // [mw1]
+  storage.use("set", mw2, { append: true });        // [mw1, mw2]
+  storage.use("set", mw3, { append: true });        // [mw1, mw2, mw3]
+  storage.use("set", mw4);                          // [mw1, mw4, mw2, mw3]
+  storage.use("set", mw5, { append: true });        // [mw1, mw4, mw2, mw3, mw5]
   ```
 
 __중복 등록 정책__
