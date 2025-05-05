@@ -908,7 +908,9 @@ test.describe("Stosh E2E 기본 동작", () => {
   });
 
   test.describe("Stosh strictSyncFallback 정책 (IndexedDB)", () => {
-    test("IndexedDB + sync API + strictSyncFallback: true → 에러 발생", async ({ page }) => {
+    test("IndexedDB + sync API + strictSyncFallback: true → 에러 발생", async ({
+      page,
+    }) => {
       await page.goto("/test-e2e/build/public/index.html");
       // IndexedDB + sync API + strictSyncFallback: true
       const error = await page.evaluate(() => {
@@ -916,7 +918,7 @@ test.describe("Stosh E2E 기본 동작", () => {
           const storage = window.stosh({
             type: "idb",
             strictSyncFallback: true,
-            namespace: "e2e-strict-err"
+            namespace: "e2e-strict-err",
           });
           storage.setSync("foo", 1);
           return null;
@@ -924,14 +926,18 @@ test.describe("Stosh E2E 기본 동작", () => {
           return e.message;
         }
       });
-      expect(error).toContain("setSync is not supported with IndexedDB storage");
+      expect(error).toContain(
+        "setSync is not supported with IndexedDB storage"
+      );
     });
-  
-    test("IndexedDB + sync API + strictSyncFallback: false → 경고 후 fallback", async ({ page }) => {
+
+    test("IndexedDB + sync API + strictSyncFallback: false → 경고 후 fallback", async ({
+      page,
+    }) => {
       await page.goto("/test-e2e/build/public/index.html");
       // IndexedDB + sync API + strictSyncFallback: false
       let warnMsg = "";
-      page.on("console", msg => {
+      page.on("console", (msg) => {
         if (msg.type() === "warning" && msg.text().includes("[stosh]")) {
           warnMsg = msg.text();
         }
@@ -940,7 +946,7 @@ test.describe("Stosh E2E 기본 동작", () => {
         const storage = window.stosh({
           type: "idb",
           strictSyncFallback: false,
-          namespace: "e2e-strict-warn"
+          namespace: "e2e-strict-warn",
         });
         storage.setSync("foo", 123);
         return storage.getSync("foo");
@@ -952,11 +958,13 @@ test.describe("Stosh E2E 기본 동작", () => {
     });
   });
 
-  test("IndexedDB + sync API + strictSyncFallback 미지정(기본값) → 경고 후 fallback", async ({ page }) => {
+  test("IndexedDB + sync API + strictSyncFallback 미지정(기본값) → 경고 후 fallback", async ({
+    page,
+  }) => {
     await page.goto("/test-e2e/build/public/index.html");
     // strictSyncFallback 옵션 미지정 시 기본값(false)로 동작해야 함
     let warnMsg = "";
-    page.on("console", msg => {
+    page.on("console", (msg) => {
       if (msg.type() === "warning" && msg.text().includes("[stosh]")) {
         warnMsg = msg.text();
       }
@@ -964,7 +972,7 @@ test.describe("Stosh E2E 기본 동작", () => {
     const value = await page.evaluate(() => {
       const storage = window.stosh({
         type: "idb",
-        namespace: "e2e-strict-default"
+        namespace: "e2e-strict-default",
       });
       storage.setSync("foo", 456);
       return storage.getSync("foo");
@@ -975,50 +983,62 @@ test.describe("Stosh E2E 기본 동작", () => {
   });
 
   test("미들웨어 prepend/append/해제/중복등록 동작", async ({ page }) => {
-    page.on('console', msg => {
-      if (msg.type() === 'log') {
+    page.on("console", (msg) => {
+      if (msg.type() === "log") {
         // 브라우저에서 찍힌 로그를 터미널로 출력
-        console.log('[browser log]', msg.text());
+        console.log("[browser log]", msg.text());
       }
     });
     await page.evaluate(() => {
       window.storage = window.stosh({ type: "local", namespace: "mwtest" });
       window.calls = [];
-  
+
       // (기본값)
       window.storage.use("set", (ctx, next) => {
         window.calls.push("A");
         ctx.value = ctx.value + "_A";
         next();
       });
-  
+
       // prepend
-      window.storage.use("set", (ctx, next) => {
-        window.calls.push("B");
-        ctx.value = ctx.value + "_B";
-        next();
-      }, { prepend: true });
-  
+      window.storage.use(
+        "set",
+        (ctx, next) => {
+          window.calls.push("B");
+          ctx.value = ctx.value + "_B";
+          next();
+        },
+        { prepend: true }
+      );
+
       // append
-      window.storage.use("set", (ctx, next) => {
-        window.calls.push("C");
-        ctx.value = ctx.value + "_C";
-        next();
-      }, { append: true });
-  
+      window.storage.use(
+        "set",
+        (ctx, next) => {
+          window.calls.push("C");
+          ctx.value = ctx.value + "_C";
+          next();
+        },
+        { append: true }
+      );
+
       // 익명함수 선언은 내용이 같아도 두번 등록 가능
       window.storage.use("set", (ctx, next) => {
         window.calls.push("A");
         ctx.value = ctx.value + "_A";
         next();
       });
-  
+
       // 해제 함수 테스트
-      const unsub = window.storage.use("set", (ctx, next) => {
-        window.calls.push("D");
-        ctx.value = ctx.value + "_D";
-        next();
-      }, { prepend: true });
+      const unsub = window.storage.use(
+        "set",
+        (ctx, next) => {
+          window.calls.push("D");
+          ctx.value = ctx.value + "_D";
+          next();
+        },
+        { prepend: true }
+      );
       unsub(); // 등록 즉시 해제
 
       // 중복 함수 레퍼런스 등록은 무시
@@ -1031,22 +1051,30 @@ test.describe("Stosh E2E 기본 동작", () => {
       window.storage.use("set", mw); // 두 번째 등록은 무시됨
 
       // append
-      window.storage.use("set", (ctx, next) => {
-        window.calls.push("F");
-        ctx.value = ctx.value + "_F";
-        next();
-      }, { append: true });
+      window.storage.use(
+        "set",
+        (ctx, next) => {
+          window.calls.push("F");
+          ctx.value = ctx.value + "_F";
+          next();
+        },
+        { append: true }
+      );
 
       // prepend
-      window.storage.use("set", (ctx, next) => {
-        window.calls.push("G");
-        ctx.value = ctx.value + "_G";
-        next();
-      }, { prepend: true });
-  
+      window.storage.use(
+        "set",
+        (ctx, next) => {
+          window.calls.push("G");
+          ctx.value = ctx.value + "_G";
+          next();
+        },
+        { prepend: true }
+      );
+
       window.storage.setSync("foo", "bar");
     });
-  
+
     // 실행 순서 및 값 검증
     const calls = await page.evaluate(() => window.calls);
     expect(calls).toEqual(["G", "B", "A", "A", "E", "C", "F"]);
@@ -1064,7 +1092,9 @@ test.describe("Stosh E2E 기본 동작", () => {
       return localStorage.getItem("test:foo");
     });
   });
-  test("IndexedDB 완전 불가 환경에서 strictSyncFallback 동작", async ({ page }) => {
+  test("IndexedDB 완전 불가 환경에서 strictSyncFallback 동작", async ({
+    page,
+  }) => {
     await page.evaluate(() => {
       const storage = stosh({ type: "idb", strictSyncFallback: true });
       // idbStorage를 undefined로 강제

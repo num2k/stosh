@@ -114,11 +114,6 @@ export default function Home() {
           <li key={i}>{l}</li>
         ))}
       </ol>
-      <div style={{ marginTop: 32 }}>
-        <Link href="/remove-test">삭제/만료 테스트</Link> |{" "}
-        <Link href="/namespace-test">네임스페이스 테스트</Link> |{" "}
-        <Link href="/cookie-test">쿠키/옵션 테스트</Link>
-      </div>
     </main>
   );
 }

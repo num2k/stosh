@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import Link from "next/link";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,6 +27,14 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         {children}
+
+        <div style={{ marginTop: 32 }}>
+          <Link href="/remove-test">삭제/만료 테스트</Link> |{" "}
+          <Link href="/namespace-test">네임스페이스 테스트</Link> |{" "}
+          <Link href="/cookie-test">쿠키/옵션 테스트</Link> |{" "}
+          <Link href="/user-profile-test">사용자 프로필 테스트</Link> |{" "}
+          <Link href="/server">서버사이드 렌더링 테스트</Link> |{" "}
+        </div>
       </body>
     </html>
   );

@@ -12,13 +12,14 @@ export function runMiddlewareChain<T>(
     const fn = middlewares[index] || last;
     if (!fn) return;
     try {
-      return Promise.resolve(fn(ctx, () => dispatch(index + 1)))
-          .catch(err => {
-            console.error('[stosh] Middleware error:', err);
-            throw err;
-          });
+      return Promise.resolve(fn(ctx, () => dispatch(index + 1))).catch(
+        (err) => {
+          console.error("[stosh] Middleware error:", err);
+          throw err;
+        }
+      );
     } catch (err) {
-      console.error('[stosh] Middleware error:', err);
+      console.error("[stosh] Middleware error:", err);
       throw err;
     }
   }
@@ -39,7 +40,7 @@ export function runMiddlewareChainSync<T>(
     try {
       fn(ctx, () => dispatch(index + 1));
     } catch (err) {
-      console.error('[stosh] Middleware error:', err);
+      console.error("[stosh] Middleware error:", err);
       throw err;
     }
   }
