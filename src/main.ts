@@ -44,12 +44,15 @@ export class Stosh<T = any> {
   private readonly serializeFn: (data: StoredData<T>) => string;
   private readonly deserializeFn: (raw: string) => StoredData<T>;
   private readonly strictSyncFallback: boolean;
-  private readonly middleware: Record<MiddlewareMethod, MiddlewareEntry<T>[]> = {
-    get: [],
-    set: [],
-    remove: [],
-  };
-  private onChangeCbs: Array<(key: string, value: T | null) => void | Promise<void>> = [];
+  private readonly middleware: Record<MiddlewareMethod, MiddlewareEntry<T>[]> =
+    {
+      get: [],
+      set: [],
+      remove: [],
+    };
+  private onChangeCbs: Array<
+    (key: string, value: T | null) => void | Promise<void>
+  > = [];
   private readonly idbStorage?: IndexedDBStorage;
   /** Indicates if memory fallback is active */
   readonly isMemoryFallback: boolean;
@@ -59,8 +62,21 @@ export class Stosh<T = any> {
   }
 
   constructor(options?: StoshOptions) {
+    // Initialize common properties
+    this.namespace = options?.namespace ? options.namespace + ":" : "";
+    this.strictSyncFallback = options?.strictSyncFallback ?? false;
+    this.serializeFn = options?.serialize || JSON.stringify;
+    this.deserializeFn = options?.deserialize || JSON.parse;
+    this.middleware = {
+      get: [],
+      set: [],
+      remove: [],
+    };
+
     let storage: Storage | null = null;
     let fallback = false;
+
+    // Validate storage type
     const validTypes: StorageType[] = [
       STORAGE_TYPE_IDB,
       STORAGE_TYPE_LOCAL,
@@ -76,30 +92,21 @@ export class Stosh<T = any> {
       options?.type && options.type !== STORAGE_TYPE_IDB
         ? true
         : options?.priority
-          ? options.priority.every((t) => t !== STORAGE_TYPE_IDB)
-          : false;
+        ? options.priority.every((t) => t !== STORAGE_TYPE_IDB)
+        : false;
 
     let priority: StorageType[] =
       options?.priority ||
       (options?.type
         ? [options.type]
         : requiresSync
-          ? DEFAULT_PRIORITY_SYNC
-          : DEFAULT_PRIORITY);
+        ? DEFAULT_PRIORITY_SYNC
+        : DEFAULT_PRIORITY);
 
     if (Stosh.isSSR) {
       fallback = true;
       this.storage = new MemoryStorage();
       this.isMemoryFallback = true;
-      this.namespace = options?.namespace ? options.namespace + ":" : "";
-      this.strictSyncFallback = options?.strictSyncFallback ?? false;
-      this.serializeFn = options?.serialize || JSON.stringify;
-      this.deserializeFn = options?.deserialize || JSON.parse;
-      this.middleware = {
-        get: [],
-        set: [],
-        remove: [],
-      };
       return;
     }
 
@@ -150,15 +157,6 @@ export class Stosh<T = any> {
 
     this.storage = storage!;
     this.isMemoryFallback = fallback;
-    this.namespace = options?.namespace ? options.namespace + ":" : "";
-    this.strictSyncFallback = options?.strictSyncFallback ?? false;
-    this.serializeFn = options?.serialize || JSON.stringify;
-    this.deserializeFn = options?.deserialize || JSON.parse;
-    this.middleware = {
-      get: [],
-      set: [],
-      remove: [],
-    };
 
     if (!Stosh.isSSR && window.addEventListener) {
       if (
@@ -176,7 +174,10 @@ export class Stosh<T = any> {
                   value = data.v;
                 }
               } catch (err) {
-                console.error('[stosh] Failed to deserialize storage event value:', err);
+                console.error(
+                  "[stosh] Failed to deserialize storage event value:",
+                  err
+                );
               }
             }
             this.triggerChange(key, value);
@@ -200,7 +201,10 @@ export class Stosh<T = any> {
 
     // Synchronous method with asynchronous middleware registration warning
     const syncMethods = ["set", "get", "remove"];
-    const isAsync = typeof mw === "function" && mw.constructor && mw.constructor.name === "AsyncFunction";
+    const isAsync =
+      typeof mw === "function" &&
+      mw.constructor &&
+      mw.constructor.name === "AsyncFunction";
     if (syncMethods.includes(method) && isAsync) {
       warnIfAsyncMiddleware.call(this, method);
     }
@@ -210,7 +214,7 @@ export class Stosh<T = any> {
     } else if (options?.append) {
       chain.push(entry);
     } else {
-      const firstAppendIdx = chain.findIndex(e => e.options?.append);
+      const firstAppendIdx = chain.findIndex((e) => e.options?.append);
       if (firstAppendIdx === -1) {
         chain.push(entry);
       } else {
@@ -219,7 +223,7 @@ export class Stosh<T = any> {
     }
 
     return () => {
-      const idx = chain.findIndex(e => e.fn === mw);
+      const idx = chain.findIndex((e) => e.fn === mw);
       if (idx >= 0) chain.splice(idx, 1);
     };
   }
@@ -230,7 +234,7 @@ export class Stosh<T = any> {
     last: (ctx: MiddlewareContext<T>) => Promise<void> | void
   ) {
     ctx.isSync = false;
-    const chain = this.middleware[method].map(entry => entry.fn);
+    const chain = this.middleware[method].map((entry) => entry.fn);
     await runMiddlewareChain(chain, ctx, last);
   }
 
@@ -240,7 +244,7 @@ export class Stosh<T = any> {
     last: (ctx: MiddlewareContext<T>) => void
   ) {
     ctx.isSync = true;
-    const chain = this.middleware[method].map(entry => entry.fn);
+    const chain = this.middleware[method].map((entry) => entry.fn);
     runMiddlewareChainSync(chain, ctx, last);
   }
 
@@ -274,7 +278,7 @@ export class Stosh<T = any> {
             result = data.v;
           }
         } catch (err) {
-          console.error('[stosh] Failed to deserialize storage value:', err);
+          console.error("[stosh] Failed to deserialize storage value:", err);
           result = null;
         }
       }
@@ -304,7 +308,7 @@ export class Stosh<T = any> {
             result = data.v;
           }
         } catch (err) {
-          console.error('[stosh] Failed to deserialize storage value:', err);
+          console.error("[stosh] Failed to deserialize storage value:", err);
           result = null;
         }
       }
@@ -315,9 +319,25 @@ export class Stosh<T = any> {
   }
 
   private validateStorableValue(value: any) {
-    if (typeof value === "function") throw new Error("[stosh] Function type value cannot be stored.");
-    try { JSON.stringify(value); }
-    catch { throw new Error("[stosh] Circular reference value cannot be stored."); }
+    if (typeof value === "function") {
+      throw new Error("[stosh] Function type value cannot be stored.");
+    }
+
+    if (
+      value === null ||
+      typeof value === "undefined" ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      return;
+    }
+
+    try {
+      JSON.stringify(value);
+    } catch {
+      throw new Error("[stosh] Circular reference value cannot be stored.");
+    }
   }
 
   private getNamespacedKey(key: string): string {
@@ -347,7 +367,10 @@ export class Stosh<T = any> {
         return;
       }
       const namespacedKey = this.getNamespacedKey(finalCtx.key);
-      const serializedData = this.serializeData(finalCtx.value, finalCtx.options);
+      const serializedData = this.serializeData(
+        finalCtx.value,
+        finalCtx.options
+      );
       if (this.storage instanceof CookieStorage) {
         this.storage.setItem(namespacedKey, serializedData, finalCtx.options);
       } else if (this.idbStorage) {
@@ -369,7 +392,10 @@ export class Stosh<T = any> {
         return;
       }
       const namespacedKey = this.getNamespacedKey(finalCtx.key);
-      const serializedData = this.serializeData(finalCtx.value, finalCtx.options);
+      const serializedData = this.serializeData(
+        finalCtx.value,
+        finalCtx.options
+      );
       if (this.storage instanceof CookieStorage) {
         this.storage.setItem(namespacedKey, serializedData, finalCtx.options);
       } else {
@@ -518,7 +544,10 @@ export class Stosh<T = any> {
                   value = data.v;
                 }
               } catch (err) {
-                console.error('[stosh] Failed to deserialize storage value:', err);
+                console.error(
+                  "[stosh] Failed to deserialize storage value:",
+                  err
+                );
                 value = null;
               }
 
@@ -618,7 +647,11 @@ export class Stosh<T = any> {
     entries: Array<{ key: string; value: T; options?: SetOptions }>,
     options?: SetOptions
   ): void {
-    checkSyncAvailable(this.idbStorage, this.strictSyncFallback, "batchSetSync");
+    checkSyncAvailable(
+      this.idbStorage,
+      this.strictSyncFallback,
+      "batchSetSync"
+    );
     entries.forEach(({ key, value, options: entryOptions }) => {
       const mergedOptions = mergeOptions(options, entryOptions);
       this._setInternalSync(key, value, mergedOptions);
@@ -648,7 +681,7 @@ export class Stosh<T = any> {
               deserializedValue = data.v;
             }
           } catch (err) {
-            console.error('[stosh] Failed to deserialize storage value:', err);
+            console.error("[stosh] Failed to deserialize storage value:", err);
             deserializedValue = null;
           }
         }
@@ -671,7 +704,11 @@ export class Stosh<T = any> {
   }
 
   batchGetSync<U = T>(keys: string[]): (U | null)[] {
-    checkSyncAvailable(this.idbStorage, this.strictSyncFallback, "batchGetSync");
+    checkSyncAvailable(
+      this.idbStorage,
+      this.strictSyncFallback,
+      "batchGetSync"
+    );
     return keys.map((key) => this._getInternalSync<U>(key));
   }
 
@@ -698,16 +735,22 @@ export class Stosh<T = any> {
   }
 
   batchRemoveSync(keys: string[], options?: RemoveOptions): void {
-    checkSyncAvailable(this.idbStorage, this.strictSyncFallback, "batchRemoveSync");
+    checkSyncAvailable(
+      this.idbStorage,
+      this.strictSyncFallback,
+      "batchRemoveSync"
+    );
     keys.forEach((key) => {
       this._removeInternalSync(key, options);
     });
   }
 
-  onChange(cb: (key: string, value: T | null) => void | Promise<void>): () => void {
+  onChange(
+    cb: (key: string, value: T | null) => void | Promise<void>
+  ): () => void {
     this.onChangeCbs.push(cb);
     return () => {
-      this.onChangeCbs = this.onChangeCbs.filter(fn => fn !== cb);
+      this.onChangeCbs = this.onChangeCbs.filter((fn) => fn !== cb);
     };
   }
 

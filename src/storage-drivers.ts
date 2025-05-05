@@ -35,19 +35,10 @@ export class CookieStorage implements Storage {
   }
   getItem(key: string): string | null {
     const name = encodeURIComponent(key) + "=";
-    return document.cookie
-      .split(";")
-      .map((c) => c.trim())
-      .find((c) => c.startsWith(name))
-      ?.slice(name.length)
-      ? decodeURIComponent(
-          document.cookie
-            .split(";")
-            .map((c) => c.trim())
-            .find((c) => c.startsWith(name))!
-            .slice(name.length)
-        )
-      : null;
+    const cookies = document.cookie.split(";").map((c) => c.trim());
+    const cookie = cookies.find((c) => c.startsWith(name));
+    if (!cookie) return null;
+    return decodeURIComponent(cookie.slice(name.length));
   }
   key(index: number): string | null {
     const cookies = document.cookie.split(";");
@@ -165,63 +156,87 @@ export class IndexedDBStorage {
   }
 
   async getItem(key: string): Promise<string | null> {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, "readonly");
-      const store = tx.objectStore(this.storeName);
-      const req = store.get(key);
-      req.onsuccess = () => resolve(req.result ?? null);
-      req.onerror = () =>
-        reject(new Error("[stosh] IndexedDB getItem error: " + req.error));
-    });
+    return this.createTransaction<string | null>(
+      "readonly",
+      (store, resolve, reject) => {
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result ?? null);
+        req.onerror = () =>
+          reject(new Error("[stosh] IndexedDB getItem error: " + req.error));
+      }
+    );
   }
 
   async setItem(key: string, value: string): Promise<void> {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, "readwrite");
-      const store = tx.objectStore(this.storeName);
-      const req = store.put(value, key);
-      req.onsuccess = () => resolve();
-      req.onerror = () =>
-        reject(new Error("[stosh] IndexedDB setItem error: " + req.error));
-    });
+    return this.createTransaction<void>(
+      "readwrite",
+      (store, resolve, reject) => {
+        const req = store.put(value, key);
+        req.onsuccess = () => resolve();
+        req.onerror = () =>
+          reject(new Error("[stosh] IndexedDB setItem error: " + req.error));
+      }
+    );
   }
 
   async removeItem(key: string): Promise<void> {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, "readwrite");
-      const store = tx.objectStore(this.storeName);
-      const req = store.delete(key);
-      req.onsuccess = () => resolve();
-      req.onerror = () =>
-        reject(new Error("[stosh] IndexedDB removeItem error: " + req.error));
-    });
+    return this.createTransaction<void>(
+      "readwrite",
+      (store, resolve, reject) => {
+        const req = store.delete(key);
+        req.onsuccess = () => resolve();
+        req.onerror = () =>
+          reject(new Error("[stosh] IndexedDB removeItem error: " + req.error));
+      }
+    );
   }
 
   async clear(): Promise<void> {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, "readwrite");
-      const store = tx.objectStore(this.storeName);
-      const req = store.clear();
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error || new Error("[stosh] Transaction aborted"));
-    });
+    return this.createTransaction<void>(
+      "readwrite",
+      (store, resolve, reject) => {
+        const req = store.clear();
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      }
+    );
   }
 
   async getAllKeys(): Promise<string[]> {
+    return this.createTransaction<string[]>(
+      "readonly",
+      (store, resolve, reject) => {
+        const req = store.getAllKeys();
+        req.onsuccess = () => resolve(req.result as string[]);
+        req.onerror = () => reject(req.error);
+      }
+    );
+  }
+
+  /**
+   * Helper method to create a transaction and handle common error patterns
+   */
+  private async createTransaction<T>(
+    mode: IDBTransactionMode,
+    operation: (
+      store: IDBObjectStore,
+      resolve: (value: T) => void,
+      reject: (reason: any) => void
+    ) => void
+  ): Promise<T> {
     const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, "readonly");
+    return new Promise<T>((resolve, reject) => {
+      const tx = db.transaction(this.storeName, mode);
       const store = tx.objectStore(this.storeName);
-      const req = store.getAllKeys();
-      req.onsuccess = () => resolve(req.result as string[]);
-      req.onerror = () => reject(req.error);
+
+      operation(store, resolve, reject);
+
+      tx.oncomplete = () => {
+        resolve(undefined as unknown as T);
+      };
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () =>
+        reject(tx.error || new Error("[stosh] Transaction aborted"));
     });
   }
 
@@ -229,82 +244,62 @@ export class IndexedDBStorage {
     entries: Array<{ key: string; value: string }>
   ): Promise<void> {
     if (!entries.length) return;
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, "readwrite");
-      const store = tx.objectStore(this.storeName);
+
+    return this.createTransaction<void>("readwrite", (store, _, reject) => {
       entries.forEach(({ key, value }) => {
         const req = store.put(value, key);
         req.onerror = () => {
-          if (!tx.error) {
-            reject(req.error);
-            tx.abort();
-          }
+          reject(req.error);
+          store.transaction.abort();
         };
       });
-
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error || new Error("[stosh] Transaction aborted"));
     });
   }
 
   async batchGet(keys: string[]): Promise<(string | null)[]> {
     if (!keys.length) return [];
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, "readonly");
-      const store = tx.objectStore(this.storeName);
-      const results: (string | null)[] = new Array(keys.length).fill(null);
-      const keyMap = new Map<string, number[]>();
 
-      keys.forEach((key, index) => {
-        if (!keyMap.has(key)) keyMap.set(key, []);
-        keyMap.get(key)!.push(index);
-      });
+    return this.createTransaction<(string | null)[]>(
+      "readonly",
+      (store, resolve, reject) => {
+        const results: (string | null)[] = new Array(keys.length).fill(null);
+        const keyMap = new Map<string, number[]>();
 
-      if (keyMap.size === 0) {
-        resolve(results);
-        return;
+        keys.forEach((key, index) => {
+          if (!keyMap.has(key)) keyMap.set(key, []);
+          keyMap.get(key)!.push(index);
+        });
+
+        if (keyMap.size === 0) {
+          resolve(results);
+          return;
+        }
+
+        keyMap.forEach((indices, key) => {
+          const req = store.get(key);
+          req.onsuccess = () => {
+            indices.forEach((index) => (results[index] = req.result ?? null));
+          };
+          req.onerror = () => reject(req.error);
+        });
+
+        // Set up a handler to resolve with results when transaction completes
+        store.transaction.addEventListener("complete", () => resolve(results));
       }
-
-      keyMap.forEach((indices, key) => {
-        const req = store.get(key);
-        req.onsuccess = () => {
-          indices.forEach((index) => (results[index] = req.result ?? null));
-        };
-        req.onerror = () => {
-          if (!tx.error) {
-            reject(req.error);
-          }
-        };
-      });
-
-      tx.oncomplete = () => resolve(results);
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error || new Error("[stosh] Transaction aborted"));
-    });
+    );
   }
 
   async batchRemove(keys: string[]): Promise<void> {
     if (!keys.length) return;
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, "readwrite");
-      const store = tx.objectStore(this.storeName);
+
+    return this.createTransaction<void>("readwrite", (store, _, reject) => {
       keys.forEach((key) => {
         const req = store.delete(key);
         req.onerror = () => {
-          if (!tx.error) {
-            reject(req.error);
-            tx.abort();
-          }
+          reject(req.error);
+          store.transaction.abort();
         };
       });
-
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error || new Error("[stosh] Transaction aborted"));
     });
   }
 }
