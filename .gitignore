@@ -6,3 +6,4 @@ node_modules/
 test-e2e/build/*.js
 test-e2e-report/*.html
 temp/
+.idea/

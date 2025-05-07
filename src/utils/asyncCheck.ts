@@ -1,6 +1,6 @@
 export function warnIfAsyncMiddleware(
   this: any,
-  method: "set" | "get" | "remove"
+  method: "set" | "get" | "remove",
 ) {
   const isAsyncFn = (fn: Function) =>
     typeof fn === "function" &&
@@ -8,7 +8,7 @@ export function warnIfAsyncMiddleware(
   const hasAsync = this.middleware?.[method]?.some(isAsyncFn);
   if (hasAsync) {
     console.warn(
-      "[stosh] An async middleware is registered to a sync method. Unexpected behavior may occur when using setSync/getSync/removeSync, etc."
+      "[stosh] An async middleware is registered to a sync method. Unexpected behavior may occur when using setSync/getSync/removeSync, etc.",
     );
   }
 }

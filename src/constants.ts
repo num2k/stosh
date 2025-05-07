@@ -9,7 +9,7 @@ export type StorageType =
   | typeof STORAGE_TYPE_LOCAL
   | typeof STORAGE_TYPE_SESSION
   | typeof STORAGE_TYPE_COOKIE
-  | typeof STORAGE_TYPE_MEMORY;
+  | typeof STORAGE_TYPE_MEMORY
 
 // Default priority for async APIs
 export const DEFAULT_PRIORITY: StorageType[] = [
@@ -36,4 +36,4 @@ export const MIDDLEWARE_METHOD_REMOVE = "remove";
 export type MiddlewareMethod =
   | typeof MIDDLEWARE_METHOD_GET
   | typeof MIDDLEWARE_METHOD_SET
-  | typeof MIDDLEWARE_METHOD_REMOVE;
+  | typeof MIDDLEWARE_METHOD_REMOVE

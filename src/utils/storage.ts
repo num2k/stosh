@@ -1,11 +1,11 @@
 import {
-  STORAGE_TYPE_LOCAL,
-  STORAGE_TYPE_SESSION,
   STORAGE_TYPE_COOKIE,
+  STORAGE_TYPE_LOCAL,
   STORAGE_TYPE_MEMORY,
+  STORAGE_TYPE_SESSION,
   StorageType,
 } from "../constants";
-import { MemoryStorage, CookieStorage } from "../storage-drivers";
+import { CookieStorage, MemoryStorage } from "../storage-drivers";
 
 export function testStorageAvailable(storage: Storage): boolean {
   try {

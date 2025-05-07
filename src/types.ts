@@ -22,7 +22,8 @@ export interface SetOptions extends CookieOptions {
   expire?: number;
 }
 
-export interface RemoveOptions extends CookieOptions {}
+export interface RemoveOptions extends CookieOptions {
+}
 
 export interface MiddlewareOptions {
   prepend?: boolean;
@@ -41,7 +42,7 @@ export type MiddlewareContext<T = any> = {
 
 export type MiddlewareFn<T = any> = (
   ctx: MiddlewareContext<T>,
-  next: () => Promise<void> | void
+  next: () => Promise<void> | void,
 ) => Promise<void> | void;
 
 export type MiddlewareEntry<T = any> = {

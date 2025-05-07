@@ -4,7 +4,7 @@ export function stripNamespace(key: string, namespace: string): string {
 
 export function getNamespaceKeys(
   storage: Storage,
-  namespace: string
+  namespace: string,
 ): string[] {
   return Array.from({ length: storage.length })
     .map((_, i) => storage.key(i))
