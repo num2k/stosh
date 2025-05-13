@@ -15,18 +15,18 @@ export default function NamespaceTest() {
     cacheStorage.setSync("temp", 123);
     logs.push(
       "[네임스페이스 분리] user profile: (기대값: {name: 'Alice'}) → " +
-        JSON.stringify(userStorage.getSync("profile"))
+      JSON.stringify(userStorage.getSync("profile")),
     );
     logs.push(
       "[네임스페이스 분리] cache temp: (기대값: 123) → " +
-        cacheStorage.getSync("temp")
+      cacheStorage.getSync("temp"),
     );
     // [TEST 2] 네임스페이스 충돌 (기대값: ns2 get x = 1)
     const ns1 = stosh({ namespace: "ns" });
     const ns2 = stosh({ namespace: "ns" });
     ns1.setSync("x", 1);
     logs.push(
-      "[네임스페이스 충돌] ns2 get x: (기대값: 1) → " + ns2.getSync("x")
+      "[네임스페이스 충돌] ns2 get x: (기대값: 1) → " + ns2.getSync("x"),
     );
     setLog([...logs]);
   }, []);

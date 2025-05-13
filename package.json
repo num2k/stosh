@@ -1,6 +1,6 @@
 {
   "name": "stosh",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Middleware-based browser storage wrapper (stosh)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -8,16 +8,14 @@
   "exports": {
     ".": {
       "import": "./dist/index.mjs",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.js"
     }
   },
   "scripts": {
     "test": "jest",
-    "test:dts": "tsd",
+    "test:dts": "npx tsc --noEmit --strict --skipLibCheck test-dts/index.test-d.ts",
     "test:e2e": "playwright test",
     "test:serve": "serve .",
-    "build:test-dts": "npm run build && copy test-dts\\index.test-d.ts dist\\index.test-d.ts",
     "build:test-e2e": "esbuild test-e2e/test-e2e-entry.ts --bundle --format=iife --outfile=test-e2e/build/index.js",
     "build": "rm -rf dist && npm run build:ts && npm run build:esm",
     "build:ts": "tsc",
@@ -51,7 +49,6 @@
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "playwright": "^1.52.0",
-    "ts-jest": "^29.3.2",
-    "tsd": "^0.32.0"
+    "ts-jest": "^29.3.2"
   }
 }

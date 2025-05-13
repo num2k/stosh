@@ -1,10 +1,10 @@
-import { StorageType } from "./constants";
+import { StorageType } from './constants';
 
 export interface CookieOptions {
   path?: string;
   domain?: string;
   secure?: boolean;
-  sameSite?: "Strict" | "Lax" | "None";
+  sameSite?: 'Strict' | 'Lax' | 'None';
 }
 
 export type StoredData<T> = { v: T; e?: number };
